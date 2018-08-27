@@ -1,0 +1,33 @@
+# Datacard produced by CombineHarvester with git status: analysis-HIG-16-006-freeze-080416-292-gbfdcca6-dirty
+imax    6 number of bins
+jmax    10 number of processes minus 1
+kmax    * number of nuisance parameters
+--------------------------------------------------------------------------------
+shapes * rec_Ep_Em outputfileMorph.root rec_Ep_Em/$PROCESS rec_Ep_Em/$PROCESS_$SYSTEMATIC
+shapes * rec_Epos outputfileMorph.root rec_Epos/$PROCESS rec_Epos/$PROCESS_$SYSTEMATIC
+shapes * rec_Mll outputfileMorph.root rec_Mll/$PROCESS rec_Mll/$PROCESS_$SYSTEMATIC
+shapes * rec_ptll outputfileMorph.root rec_ptll/$PROCESS rec_ptll/$PROCESS_$SYSTEMATIC
+shapes * rec_ptp_ptm outputfileMorph.root rec_ptp_ptm/$PROCESS rec_ptp_ptm/$PROCESS_$SYSTEMATIC
+shapes * rec_ptpos outputfileMorph.root rec_ptpos/$PROCESS rec_ptpos/$PROCESS_$SYSTEMATIC
+shapes tt rec_Ep_Em outputfileMorph.root morph:rec_Ep_Em_$PROCESS_morph 
+shapes tW rec_Ep_Em outputfileMorph.root morph:rec_Ep_Em_$PROCESS_morph 
+shapes tt rec_Epos outputfileMorph.root morph:rec_Epos_$PROCESS_morph 
+shapes tW rec_Epos outputfileMorph.root morph:rec_Epos_$PROCESS_morph 
+shapes tt rec_Mll outputfileMorph.root morph:rec_Mll_$PROCESS_morph 
+shapes tW rec_Mll outputfileMorph.root morph:rec_Mll_$PROCESS_morph 
+shapes tt rec_ptll outputfileMorph.root morph:rec_ptll_$PROCESS_morph 
+shapes tW rec_ptll outputfileMorph.root morph:rec_ptll_$PROCESS_morph 
+shapes tt rec_ptp_ptm outputfileMorph.root morph:rec_ptp_ptm_$PROCESS_morph 
+shapes tW rec_ptp_ptm outputfileMorph.root morph:rec_ptp_ptm_$PROCESS_morph 
+shapes tt rec_ptpos outputfileMorph.root morph:rec_ptpos_$PROCESS_morph 
+shapes tW rec_ptpos outputfileMorph.root morph:rec_ptpos_$PROCESS_morph 
+--------------------------------------------------------------------------------
+bin          rec_ptll        rec_ptpos       rec_ptp_ptm     rec_Ep_Em       rec_Epos        rec_Mll         
+observation  121935.6881     129587.6739     128729.4101     126513.6801     126558.8875     129399.4098     
+--------------------------------------------------------------------------------
+bin                          rec_ptll        rec_ptpos       rec_ptp_ptm     rec_Ep_Em       rec_Epos        rec_Mll         rec_ptll        rec_ptpos       rec_ptp_ptm     rec_Ep_Em       rec_Epos        rec_Mll         rec_ptll        rec_ptpos       rec_ptp_ptm     rec_Ep_Em       rec_Epos        rec_Mll         rec_ptll        rec_ptpos       rec_ptp_ptm     rec_Ep_Em       rec_Epos        rec_Mll         rec_ptll        rec_ptpos       rec_ptp_ptm     rec_Ep_Em       rec_Epos        rec_Mll         rec_ptll        rec_ptpos       rec_ptp_ptm     rec_Ep_Em       rec_Epos        rec_Mll         rec_ptll        rec_ptpos       rec_ptp_ptm     rec_Ep_Em       rec_Epos        rec_Mll         rec_ptll        rec_ptpos       rec_ptp_ptm     rec_Ep_Em       rec_Epos        rec_Mll         rec_ptll        rec_ptpos       rec_ptp_ptm     rec_Ep_Em       rec_Epos        rec_Mll         rec_ptll        rec_ptpos       rec_ptp_ptm     rec_Ep_Em       rec_Epos        rec_Mll         rec_ptll        rec_ptpos       rec_ptp_ptm     rec_Ep_Em       rec_Epos        rec_Mll         
+process                      DY              DY              DY              DY              DY              DY              STs             STs             STs             STs             STs             STs             STt             STt             STt             STt             STt             STt             TTZ             TTZ             TTZ             TTZ             TTZ             TTZ             TTW             TTW             TTW             TTW             TTW             TTW             WJets           WJets           WJets           WJets           WJets           WJets           WW              WW              WW              WW              WW              WW              WZ              WZ              WZ              WZ              WZ              WZ              ZZ              ZZ              ZZ              ZZ              ZZ              ZZ              tt              tt              tt              tt              tt              tt              tW              tW              tW              tW              tW              tW              
+process                      1               1               1               1               1               1               2               2               2               2               2               2               3               3               3               3               3               3               4               4               4               4               4               4               5               5               5               5               5               5               6               6               6               6               6               6               7               7               7               7               7               7               8               8               8               8               8               8               9               9               9               9               9               9               -1              -1              -1              -1              -1              -1              0               0               0               0               0               0               
+rate                         360.599         417.247         413.011         404.939         409.343         417.247         1.80496         1.90045         1.90045         1.77345         1.90045         1.90045         25.3859         27.3899         27.4573         26.635          26.8809         27.3816         88.0644         95.3444         93.1334         90.762          92.2808         95.9399         105.815         114.019         111.171         105.825         109.086         113.728         89.5517         89.5517         89.5517         89.5517         89.5517         89.5517         141.847         160.447         152.314         146.592         153.958         163.791         14.3834         15.7422         15.3351         14.3793         15.0939         16.1089         0.118597        0.126988        0.12534         0.125414        0.125706        0.127062        1               1               1               1               1               1               1               1               1               1               1               1               
+--------------------------------------------------------------------------------
+pileup               param 0 1
