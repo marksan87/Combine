@@ -16,9 +16,8 @@ masses = range(1665, 1786, deltaM)
 morph = {}
 
 for m in masses:
-    #morph[m] = f.Get("emu_signal_morph/morph_point_%d" % m)
-    #morph[m] = f.Get("morph_mt%d" % m) 
-    morph[m] = f.Get("rec_ptll/tW%d" % m)
+    morph[m] = f.Get("rec_ptll/tt%d" % m)
+    #morph[m] = f.Get("rec_ptll/tW%d" % m)
     morph[m].SetDirectory(0)
 
 #h = TH2D("morph_points", "Morphed Points", len(masses), masses[0] / 10.0, masses[-1] / 10.0, 50, 30, 180)

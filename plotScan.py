@@ -27,7 +27,7 @@ from array import array
 MT = array('d',_MT)
 deltaNLL = array('d',_deltaNLL)
 
-obs = "p_{t}(ll)"
+obs = "p_{T}(ll)"
 graph = TGraph(len(MT),MT,deltaNLL)
 graph.SetTitle("%s Likelihood Fit" % obs)
 graph.GetXaxis().SetTitle("m_{t} [GeV]")

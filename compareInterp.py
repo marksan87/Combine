@@ -7,14 +7,16 @@ parser = ArgumentParser()
 parser.add_argument("-o", dest="outF", default="interp.root", help="Output root file")
 args = parser.parse_args()
 
-inputs = ["linear", "cspline", "polynomial", "akima"]
+#inputs = ["linear", "cspline", "polynomial", "akima"]
+inputs = ["cspline"]
 masses = range(1665, 1795, 10)
 morph = {}
 for interp in inputs:
     morph[interp] = {}
-    f = TFile.Open("debug_%s.root" % interp, "read")
+#    f = TFile.Open("debug_%s.root" % interp, "read")
+    f = TFile.Open("debug.root", "read")
     for m in masses:
-        morph[interp][m] = f.Get("emu_signal_morph/morph_point_%d" % m)
+        morph[interp][m] = f.Get("rec_ptll_tW_morph/morph_point_%d" % m)
         morph[interp][m].SetDirectory(0)
 
     f.Close()
