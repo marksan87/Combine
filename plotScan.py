@@ -27,11 +27,11 @@ from array import array
 MT = array('d',_MT)
 deltaNLL = array('d',_deltaNLL)
 
-obs = "p_{T}(ll)"
 graph = TGraph(len(MT),MT,deltaNLL)
-graph.SetTitle("%s Likelihood Fit" % obs)
+graph.SetTitle("Likelihood Fit")
 graph.GetXaxis().SetTitle("m_{t} [GeV]")
 graph.GetYaxis().SetTitle("-2 * NLL")
+graph.GetYaxis().SetTitleOffset(1.2)
 c = TCanvas("c","c",1200,800)
 
 #graph.GetXaxis().SetRangeUser(171, 176)

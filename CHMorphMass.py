@@ -21,12 +21,13 @@ deltaM = 1
 masses = [str(1665 + i * deltaM) for i in xrange(121)]
 #masses = [str(1695 + i * deltaM) for i in xrange(61)]
 
-systematics = {"pileup":"shape"}#, "toppt":"shape"}
+systematics = {"pileup":"shape", "toppt":"shape"}
+#systematics = {"pileup":"shape", "toppt":"shape"}
 signals = ['tt','tW']
 cats = [(0,'rec_ptll'), \
         (1,'rec_ptpos'), \
         (2,'rec_ptp_ptm'), \
-        (3,'rec_Ep_Em'), \
+#        (3,'rec_Ep_Em'), \
         (4,'rec_Epos'), \
         (5,'rec_Mll')]
 cb.AddObservations(['*'],['tt'],['13TeV'],['mtop'],cats)
