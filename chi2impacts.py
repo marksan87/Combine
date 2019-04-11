@@ -115,4 +115,3 @@ with open(args.outF, "w") as f:
     json.dump(jsondata, f, indent=4, separators=(',', ': '))
 
 print "Output written to %s" % args.outF
-

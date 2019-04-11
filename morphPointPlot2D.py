@@ -9,6 +9,7 @@ parser = ArgumentParser()
 parser.add_argument("-i", dest="inF", default="mtTemplatesForCH.root", help="Input debug root file from CombineHarvester with morphed templates")
 parser.add_argument("--sig", default="tt", choices=["tt","tW"], help="signal sample")
 parser.add_argument("-s", "--sys", default="", help="systematic")
+parser.add_argument("--reco", default="rec", choices=["rec","gen"], help="reconstruction level")
 parser.add_argument("--obs", dest="obs", default="ptll", help="Kinematic observable")
 parser.add_argument("-o", dest="outF", default="morph2D.root", help="Output root file")
 args = parser.parse_args()
@@ -30,7 +31,7 @@ masses = range(1665, 1786, deltaM)
 signal = ["tt"]
 #systematics = ["nominal", "pileupUp", "pileupDown", "Q2Up", "Q2Down", "PdfUp", "PdfDown"]
 systematics = ["nominal"]
-
+recoObs = "%s_%s" % (args.reco, args.obs)
 h = {}
 for s in signal:
     h[s] = {}
@@ -38,7 +39,7 @@ for s in signal:
         morph = {}
         for m in masses:
             #morph[m] = f.Get("rec_%s/%s%d%s" % (args.obs,s,m,"" if syst=="nominal" else "_" + syst))
-            morph[m] = f.Get("%s%d%s" % (s,m,"" if syst=="nominal" else "_" + syst))
+            morph[m] = f.Get("%s/%s%d%s" % (recoObs,s,m,"" if syst=="nominal" else "_" + syst))
             morph[m].SetDirectory(0)
 
         h[s][syst] = TH2D("%s%s_morph_points" % (s,"" if syst=="nominal" else "_" + syst), "Morphed %s%s Templates" % (obsTitle[args.obs],"" if syst == "nominal" else "_" + syst), len(masses), (masses[0] - 0.5*deltaM) / 10.0, (masses[-1] + 0.5*deltaM)/10.0, morph[masses[0]].GetNbinsX(), morph[masses[0]].GetXaxis().GetXmin(), morph[masses[0]].GetXaxis().GetXmax())

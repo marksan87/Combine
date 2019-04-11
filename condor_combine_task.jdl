@@ -9,11 +9,15 @@ error                 = combine_task.$(ClusterId).$(ProcId).err
 log                   = combine_task.$(ClusterId).log
 
 # Send the job to Held state on failure.
-on_exit_hold = (ExitBySignal == True) || (ExitCode != 0)
+#on_exit_hold = (ExitBySignal == True) || (ExitCode != 0)
 
 # Periodically retry the jobs every 1 minutes, up to a maximum of 5 retries.
-periodic_release =  (NumJobStarts < 3) && ((CurrentTime - EnteredCurrentStatus) > 60)
+#periodic_release =  (NumJobStarts < 3) && ((CurrentTime - EnteredCurrentStatus) > 60)
 
-queue 1
-#queue 25
+#Arguments = "$(process) 2"
+Arguments = "25 100"
+Queue 1
+
+#Arguments = "$(process) 100"
+#Queue 25
 
