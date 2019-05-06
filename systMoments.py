@@ -14,7 +14,7 @@ from Style import *
 import CMS_lumi
 
 gStyle.SetOptStat(0)
-obsTitle = {"ptll":"p_{T}(ll)", "ptpos":"p_{T}(l^{+})", "Epos":"E(l^{+})", "ptp_ptm":"p_{T}(l^{+}) + p_{T}(l^{-})", "Ep_Em":"E(l^{+}) + E(l^{-})", "Mll":"M(ll)"}
+obsTitle = {"ptll":"p_{T}(ll)", "ptpos":"p_{T}(l^{+})", "Epos":"E(l^{+})", "ptp_ptm":"p_{T}(l^{+}) + p_{T}(l^{-})", "Ep_Em":"E(l^{+}) + E(l^{-})", "Mll":"M(ll)", "leadLepPt":"Leading Lepton p_{T}", "leadJetPt":"Leading Jet p_{T}"}
 
 try:
     breakpoint
@@ -63,7 +63,7 @@ L = 0.12*W
 R = 0.1*W
 
 massColor = {1665:kRed, 1695:kOrange, 1715:kGreen, 1725:kBlack, 1735:(kAzure+8), 1755:kBlue, 1785:kViolet}
-
+MEscaleColor = {"MEscale1":kRed, "MEscale2":kOrange, "MEscale3":kGreen, "MEscale4":(kAzure+8), "MEscale5":kBlue, "MEscale6":kViolet} 
 
 #############################################
 #  Quiet                                    #
@@ -185,11 +185,16 @@ oneSidedSysts = ["toppt", "CRerdON", "CRGluon", "CRQCD", "DS", "amcanlo", "madgr
 #systematics = ["Q2", "pileup"]
 #oneSidedSysts = ["toppt"]
 
-ttOnlySysts = ['toppt','hdamp','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp']
+ttOnlySysts = ['toppt','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp','MEscale1','MEscale2','MEscale3','MEscale4','MEscale5','MEscale6']
 tWOnlySysts = ['DS']
 
-observables = ["rec_ptll"]
-signal = ["tt", "tW"]
+signal = ["tt", "tW", "tttW"]
+
+# File name
+signalName = {"tt":"TTbar", "tW":"ST_tW", "tttW":"sumtttW"}
+
+# Plot title
+signalTitle = {"tt":"t#bar{t}", "tW":"ST_tW", "tttW":"t#bar{t} + tW"}
 #signal = ["tt"]
 tWactual = [1695,1725,1755]
 mtactual = [1665,1695,1715,1725,1735,1755,1785]
@@ -197,30 +202,59 @@ mtmorphed = [1665 + i for i in xrange(121)]
 masses = {}
 masses["tt"] = {"actual":mtactual, "morph":mtmorphed}
 masses["tW"] = {"actual":tWactual, "morph":mtmorphed}
-
+masses["tttW"] = {"actual":tWactual, "morph":mtmorphed}
 
 def main():
-    systematics = ["pileup", "Lumi", "EleIDEff", "EleRecoEff", "EleScale", "EleSmear", "MuIDEff", "MuIsoEff", "MuTrackEff", "MuScale", "TrigEff", "BTagSF", "JEC", "JER", "toppt", "Q2", "Pdf", "isr", "fsr", 'hdamp','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp','DS']
+    MEscaleSysts = ['MEscale1','MEscale2','MEscale3','MEscale4','MEscale5','MEscale6']
+    systematics = ["pileup", "Lumi", "EleIDEff", "EleRecoEff", "EleScale", "EleSmear", "MuIDEff", "MuIsoEff", "MuTrackEff", "MuScale", "TrigEff", "BTagSF", "JEC", "JER", "toppt", "Q2", "Pdf", "isr", "fsr", 'hdamp','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp','DS']#,'MEscale1','MEscale2','MEscale3','MEscale4','MEscale5','MEscale6']
+    observables = ["rec_ptll", "rec_Mll", "rec_ptpos", "rec_Epos", "rec_ptp_ptm", "rec_Ep_Em", "rec_leadLepPt", "rec_leadJetPt"]
     
     parser = ArgumentParser()
     parser.add_argument("-i", "--inF", default="mtTemplatesForCH.root", help="input root file")
     parser.add_argument("-o", "--outDir", default="momentPlots", help="output directory")
     parser.add_argument("-f", "--interp", default="", help="interpolation method used (for label only!)")
     parser.add_argument("-j", "--json", default="impacts.json", help="output json file for moment impacts")
+    parser.add_argument("--format", nargs="+", default=["png","pdf"], help="output file format(s)")
+    parser.add_argument("--nomoments", action="store_true", default=False, help="ignore moments")
     parser.add_argument("--nocalibration", action="store_true", default=False, help="don't apply calibration to extracted masses")
     parser.add_argument("--nogensysts", action="store_true", default=False, help="don't include alternate MC generator systs")
-    parser.add_argument("--obs", default="rec_ptll", choices=observables, help="reco_observable")
+#    parser.add_argument("--obs", default="rec_ptll", choices=(observables+["all"]), help="reco_observable")
+    parser.add_argument("--systs", default="", nargs="*", choices=(systematics + ["none","None"]), help="ONLY plot these systematics") 
+    parser.add_argument("--obs", nargs="+", default=["rec_ptll"], choices=(observables+["all"]), help="reco_observable")
     parser.add_argument("--noplots", action="store_true", default=False, help="only create json file, don't make any plots")
     parser.add_argument("--displayhistmoments", action="store_true", default=False, help="display moments on histograms")
     parser.add_argument("--rebin", default=1, help="rebin value")
+    parser.add_argument("--norm", action="store_true", default=False, help="normalize templates to unity")
     parser.add_argument("--debug", action="store_true", default=False, help="break out after loading templates")
     parser.add_argument("--test", action="store_true", default=False, help="only draw one plot for each type")
     args = parser.parse_args()
 
     if args.outDir[-1] == "/": args.outDir = args.outDir[:-1]
-    os.system("mkdir -p %s/histplots/mtscan" % args.outDir)
-    os.system("mkdir -p %s/rates" % args.outDir)
-    os.system("mkdir -p %s/calibration" % args.outDir)
+#    if args.obs != "all":
+#        observables = [args.obs]
+#        os.system("mkdir -p %s/histplots/mtscan" % args.outDir)
+#        os.system("mkdir -p %s/rates" % args.outDir)
+#        os.system("mkdir -p %s/calibration" % args.outDir)
+#    else:
+#        for obs in observables:
+#            os.system("mkdir -p %s/%s/histplots/mtscan" % (args.outDir,obs))
+#            os.system("mkdir -p %s/%s/rates" % (args.outDir,obs))
+#            os.system("mkdir -p %s/%s/calibration" % (args.outDir,obs))
+    if "all" not in args.obs:
+        observables = args.obs
+   
+
+    for obs in observables:
+        os.system("mkdir -p %s/%s/histplots/mtscan" % (args.outDir,obs))
+        os.system("mkdir -p %s/%s/rates" % (args.outDir,obs))
+        os.system("mkdir -p %s/%s/calibration" % (args.outDir,obs))
+
+    if args.systs != "":
+        # Only plot these systematics
+        systematics = args.systs
+        print "Plotting the following systematics:", systematics
+    if args.nomoments:
+        print "Ignoring moments"
 
     if args.test:
         # Only make these systematic plots
@@ -229,8 +263,9 @@ def main():
         systematics = ["hdamp","toppt"]
         print "Using the following systematics:", systematics
 
-    else:
-        gROOT.SetBatch(True)
+#    else:
+#        gROOT.SetBatch(True)
+    gROOT.SetBatch(True)
 
     c = TCanvas("c1","c1",1200,800)
     if args.nogensysts:
@@ -271,6 +306,11 @@ def main():
                     _rate = h[s][lvl][obs]["nominal"][m].IntegralAndError(1,h[s][lvl][obs]["nominal"][m].GetNbinsX(),_error)
                     rates[s][lvl][obs]["nominal"]["rate"].append(_rate)
                     rates[s][lvl][obs]["nominal"]["rateError"].append(_error)
+
+                    if args.norm:
+                        # Normalize
+                        h[s][lvl][obs]["nominal"][m].Scale(1./h[s][lvl][obs]["nominal"][m].Integral())
+
                     if useVariableBinning is None:
                         # Do once on the first template to check for variable binning
                         hist = h[s][lvl][obs]["nominal"][m]
@@ -295,16 +335,17 @@ def main():
                             variableBins = [_bins[_b] for _b in xrange(len(_bins))]
                             print "Variable binning detected:"
                             print variableBins
-                    
-                    m1,m1err,m2,m2err,m3,m3err,m4,m4err = calcMoments(h[s][lvl][obs]["nominal"][m])
-                    moments[s][lvl][obs]["nominal"]["m1"].append(m1)
-                    moments[s][lvl][obs]["nominal"]["m1err"].append(m1err)
-                    moments[s][lvl][obs]["nominal"]["m2"].append(m2)
-                    moments[s][lvl][obs]["nominal"]["m2err"].append(m2err)
-                    moments[s][lvl][obs]["nominal"]["m3"].append(m3)
-                    moments[s][lvl][obs]["nominal"]["m3err"].append(m3err)
-                    moments[s][lvl][obs]["nominal"]["m4"].append(m4)
-                    moments[s][lvl][obs]["nominal"]["m4err"].append(m4err)
+        
+                    if not args.nomoments:
+                        m1,m1err,m2,m2err,m3,m3err,m4,m4err = calcMoments(h[s][lvl][obs]["nominal"][m])
+                        moments[s][lvl][obs]["nominal"]["m1"].append(m1)
+                        moments[s][lvl][obs]["nominal"]["m1err"].append(m1err)
+                        moments[s][lvl][obs]["nominal"]["m2"].append(m2)
+                        moments[s][lvl][obs]["nominal"]["m2err"].append(m2err)
+                        moments[s][lvl][obs]["nominal"]["m3"].append(m3)
+                        moments[s][lvl][obs]["nominal"]["m3err"].append(m3err)
+                        moments[s][lvl][obs]["nominal"]["m4"].append(m4)
+                        moments[s][lvl][obs]["nominal"]["m4err"].append(m4err)
 
 
 
@@ -328,16 +369,21 @@ def main():
                         _rate = h[s][lvl][obs][syst]["Up"][m].IntegralAndError(1,h[s][lvl][obs][syst]["Up"][m].GetNbinsX(),_error)
                         rates[s][lvl][obs][syst]["Up"]["rate"].append(_rate)
                         rates[s][lvl][obs][syst]["Up"]["rateError"].append(_error)
-                        #rates[s][lvl][obs][syst]["Up"][m] = h[s][lvl][obs][syst]["Up"][m].Integral()
-                        m1,m1err,m2,m2err,m3,m3err,m4,m4err = calcMoments(h[s][lvl][obs][syst]["Up"][m])
-                        moments[s][lvl][obs][syst]["Up"]["m1"].append(m1)
-                        moments[s][lvl][obs][syst]["Up"]["m1err"].append(m1err)
-                        moments[s][lvl][obs][syst]["Up"]["m2"].append(m2)
-                        moments[s][lvl][obs][syst]["Up"]["m2err"].append(m2err)
-                        moments[s][lvl][obs][syst]["Up"]["m3"].append(m3)
-                        moments[s][lvl][obs][syst]["Up"]["m3err"].append(m3err)
-                        moments[s][lvl][obs][syst]["Up"]["m4"].append(m4)
-                        moments[s][lvl][obs][syst]["Up"]["m4err"].append(m4err)
+
+                        if args.norm:
+                            # Normalize
+                            h[s][lvl][obs][syst]["Up"][m].Scale(1./h[s][lvl][obs][syst]["Up"][m].Integral())
+
+                        if not args.nomoments:
+                            m1,m1err,m2,m2err,m3,m3err,m4,m4err = calcMoments(h[s][lvl][obs][syst]["Up"][m])
+                            moments[s][lvl][obs][syst]["Up"]["m1"].append(m1)
+                            moments[s][lvl][obs][syst]["Up"]["m1err"].append(m1err)
+                            moments[s][lvl][obs][syst]["Up"]["m2"].append(m2)
+                            moments[s][lvl][obs][syst]["Up"]["m2err"].append(m2err)
+                            moments[s][lvl][obs][syst]["Up"]["m3"].append(m3)
+                            moments[s][lvl][obs][syst]["Up"]["m3err"].append(m3err)
+                            moments[s][lvl][obs][syst]["Up"]["m4"].append(m4)
+                            moments[s][lvl][obs][syst]["Up"]["m4err"].append(m4err)
 
                         if syst not in oneSidedSysts:
                             h[s][lvl][obs][syst]["Down"][m] = f.Get("%s/%s%s%d_%sDown" % (obs,s,"actual" if lvl == "actual" else "",m,syst)).Clone()
@@ -346,21 +392,26 @@ def main():
                             _rate = h[s][lvl][obs][syst]["Down"][m].IntegralAndError(1,h[s][lvl][obs][syst]["Down"][m].GetNbinsX(),_error)
                             rates[s][lvl][obs][syst]["Down"]["rate"].append(_rate)
                             rates[s][lvl][obs][syst]["Down"]["rateError"].append(_error)
-                            #rates[s][lvl][obs][syst]["Down"][m] = h[s][lvl][obs][syst]["Down"][m].Integral()
-                            m1,m1err,m2,m2err,m3,m3err,m4,m4err = calcMoments(h[s][lvl][obs][syst]["Down"][m])
-                            moments[s][lvl][obs][syst]["Down"]["m1"].append(m1)
-                            moments[s][lvl][obs][syst]["Down"]["m1err"].append(m1err)
-                            moments[s][lvl][obs][syst]["Down"]["m2"].append(m2)
-                            moments[s][lvl][obs][syst]["Down"]["m2err"].append(m2err)
-                            moments[s][lvl][obs][syst]["Down"]["m3"].append(m3)
-                            moments[s][lvl][obs][syst]["Down"]["m3err"].append(m3err)
-                            moments[s][lvl][obs][syst]["Down"]["m4"].append(m4)
-                            moments[s][lvl][obs][syst]["Down"]["m4err"].append(m4err)
+                            
+                            if args.norm:
+                                # Normalize
+                                h[s][lvl][obs][syst]["Down"][m].Scale(1./h[s][lvl][obs][syst]["Down"][m].Integral())
+                           
+                            if not args.nomoments:
+                                m1,m1err,m2,m2err,m3,m3err,m4,m4err = calcMoments(h[s][lvl][obs][syst]["Down"][m])
+                                moments[s][lvl][obs][syst]["Down"]["m1"].append(m1)
+                                moments[s][lvl][obs][syst]["Down"]["m1err"].append(m1err)
+                                moments[s][lvl][obs][syst]["Down"]["m2"].append(m2)
+                                moments[s][lvl][obs][syst]["Down"]["m2err"].append(m2err)
+                                moments[s][lvl][obs][syst]["Down"]["m3"].append(m3)
+                                moments[s][lvl][obs][syst]["Down"]["m3err"].append(m3err)
+                                moments[s][lvl][obs][syst]["Down"]["m4"].append(m4)
+                                moments[s][lvl][obs][syst]["Down"]["m4err"].append(m4err)
 
     f.Close()
 
 
-    if not args.nocalibration:
+    if not args.nocalibration and not args.nomoments:
         global calib
         calib = {}
         for s in signal:
@@ -447,14 +498,14 @@ def main():
 
                     pad1.cd()
                     
-                    l = TLegend(0.75,0.7, 0.9,0.88)
+                    l = TLegend(0.7,0.7, 0.85,0.88)
                     l.SetBorderSize(0)
                     actualH = h[s]['actual'][obs]['nominal'][m].Clone()
                     actualH.Rebin(args.rebin)
                     actualH.SetLineColor(kBlack)
                     actualH.SetLineWidth(2)
                     morphH = h[s]['morph'][obs]['nominal'][m].Clone()
-                    morphH.Scale(actualH.Integral()/morphH.Integral())
+                    #morphH.Scale(actualH.Integral()/morphH.Integral())
                     morphH.SetLineColor(kGreen-2)
                     morphH.SetLineWidth(2)
                     morphH.Rebin(args.rebin)
@@ -470,9 +521,9 @@ def main():
                     for i,hist in enumerate(histsSorted):
                         if i == 0:
                             hist.Draw("hist 9")
-                            hist.SetTitle("%s  %s%s  Actual vs Morphed templates  m_{t} = %.1f GeV" % ("t#bar{t}" if s == "tt" else "ST_tW","" if args.interp == "" else args.interp+"  ",obs, m/10.))
-                            hist.GetYaxis().SetTitle("Entries / %s" % ("%.0f GeV" % (hist.GetBinCenter(2) - hist.GetBinCenter(1)) if not useVariableBinning else "Bin") )
-                            hist.GetYaxis().SetTitleOffset(1.1)
+                            hist.SetTitle("%s  %s%s  Actual vs Morphed templates  m_{t} = %.1f GeV" % (signalTitle[s],"" if args.interp == "" else args.interp+"  ",obs, m/10.))
+                            hist.GetYaxis().SetTitle("%sEntries / %s" % ("Normalized " if args.norm else "", "%.0f GeV" % (hist.GetBinCenter(2) - hist.GetBinCenter(1)) if not useVariableBinning else "Bin") )
+                            hist.GetYaxis().SetTitleOffset(1.3)
                         else:
                             hist.Draw("hist 9 same")
 
@@ -491,7 +542,8 @@ def main():
                     line = TLine(ratio.GetXaxis().GetBinLowEdge(1), 1.0, ratio.GetXaxis().GetBinUpEdge(ratio.GetNbinsX()), 1.0)
                     line.SetLineWidth(2)
                     line.Draw("same")
-                    canvasRatio.SaveAs("%s/histplots/%s_comp_actual_vs_morphed_%s_mt%d.png" % (args.outDir,"TTbar" if s == "tt" else "ST_tW",obs,m))
+                    for fmt in args.format:
+                        canvasRatio.SaveAs("%s/%s/histplots/%s_comp_actual_vs_morphed_%s_mt%d.%s" % (args.outDir,obs,signalName[s],obs,m,fmt))
             
             print "Now on alternate mass histograms"
             # Alternate mass histograms        
@@ -502,7 +554,7 @@ def main():
                         if s == "tW" and syst in ttOnlySysts: continue
                         for var in ["Up","Down"]:
                             if var == "Down" and (syst == "nominal" or syst in oneSidedSysts): continue
-                            l = TLegend(0.78, 0.68, 0.88, 0.88)
+                            l = TLegend(0.75, 0.68, 0.88, 0.88)
                             #ratioLegend = TLegend(0.12, 0.12, 0.25, 0.35)
                             #ratioLegend = TLegend(0.3, 0.68, 0.53, 0.88)
                             ratioLegend = TLegend(0.45, 0.68, 0.65, 0.88)
@@ -534,8 +586,8 @@ def main():
                             nom.SetTitle("%s %s%s Mass Scan" % (obs[:3],obsTitle[obs[4:]], "" if syst == "nominal" else (" " + syst + ( (" "+var) if syst not in oneSidedSysts else "")) ))
                             # Dummy draw for creating axis objects
                             nom.Draw("hist 9")
-                            nom.GetYaxis().SetTitle("Normalized Entries / %s" % ("%.0f GeV" % (nom.GetBinCenter(2) - nom.GetBinCenter(1)) if not useVariableBinning else "Bin") )
-                            nom.GetYaxis().SetTitleOffset(1.2)
+                            nom.GetYaxis().SetTitle("%sEntries / %s" % ("Normalized " if args.norm else "", "%.0f GeV" % (nom.GetBinCenter(2) - nom.GetBinCenter(1)) if not useVariableBinning else "Bin") )
+                            nom.GetYaxis().SetTitleOffset(1.3)
                             c.cd()
                             #nom.Draw("hist 9")
                             pad1.cd()
@@ -602,7 +654,8 @@ def main():
                             CMS_lumi.CMS_lumi(pad1, 4, 12)
                             nom.GetXaxis().SetTitle(obsTitle[obs[4:]] + " [GeV]")
                             c.Update()
-                            c.SaveAs("%s/histplots/mtscan/noratio_mtscan_%s_%s%s_%s.png" % (args.outDir,"TTbar" if s == "tt" else "ST_tW",lvl, "" if syst == "nominal" else ("_"+ syst + (var if syst not in oneSidedSysts else "")),obs))
+                            for fmt in args.format:
+                                c.SaveAs("%s/%s/histplots/mtscan/noratio_mtscan_%s_%s%s_%s.%s" % (args.outDir,obs,signalName[s],lvl, "" if syst == "nominal" else ("_"+ syst + (var if syst not in oneSidedSysts else "")),obs,fmt))
                             pad2.cd()
                             nom.GetXaxis().SetTitle("")
 
@@ -639,7 +692,8 @@ def main():
                             line.Draw("same")
                             ratioLegend.Draw("same")
                             c.Update()
-                            c.SaveAs("%s/histplots/mtscan/ratio_mtscan_%s_%s%s_%s.png" % (args.outDir,"TTbar" if s == "tt" else "ST_tW",lvl, "" if syst == "nominal" else ("_"+ syst + (var if syst not in oneSidedSysts else "")) ,obs))
+                            for fmt in args.format:
+                                c.SaveAs("%s/%s/histplots/mtscan/ratio_mtscan_%s_%s%s_%s.%s" % (args.outDir,obs,signalName[s],lvl, "" if syst == "nominal" else ("_"+ syst + (var if syst not in oneSidedSysts else "")) ,obs,fmt))
 
                             pad1.cd()
                             diff[masses[s]['actual'][0]].GetXaxis().SetTitleSize(0.1)
@@ -649,16 +703,17 @@ def main():
                             l.Draw("same")
                             canvasRatio.cd()
                             diff[masses[s]['actual'][0]].SetTitle("")
-                            canvasRatio.SaveAs("%s/histplots/mtscan/mtscan_%s_%s%s_%s.png" % (args.outDir,"TTbar" if s == "tt" else "ST_tW",lvl, "" if syst == "nominal" else ("_"+ syst + (var if syst not in oneSidedSysts else "")) ,obs))
+                            for fmt in args.format:
+                                canvasRatio.SaveAs("%s/%s/histplots/mtscan/mtscan_%s_%s%s_%s.%s" % (args.outDir,obs,signalName[s],lvl, "" if syst == "nominal" else ("_"+ syst + (var if syst not in oneSidedSysts else "")), obs,fmt))
 
                     
-
+                    nom = h[s][lvl][obs]["nominal"][1725].Clone()
                     # Systematic variation plots
                     for syst in systematics:
                         if s == "tt" and syst in tWOnlySysts: continue
                         if s == "tW" and syst in ttOnlySysts: continue
                         
-                        l = TLegend(0.75,0.7, 0.9,0.88)
+                        l = TLegend(0.7,0.7, 0.88,0.88)
                         l.SetBorderSize(0)
                         up = h[s][lvl][obs][syst]["Up"][1725].Clone()
                         up.Rebin(args.rebin)
@@ -666,7 +721,8 @@ def main():
                         up.SetLineWidth(2)
                         up.SetMarkerStyle(20)
                         up.SetMarkerSize(0)
-                        up.Scale(1./up.Integral())
+                        up.Add(nom, -1)
+                        #up.Scale(1./up.Integral())
 
                         try:
                             down = h[s][lvl][obs][syst]["Down"][1725].Clone()
@@ -675,10 +731,11 @@ def main():
                             down.SetLineWidth(2)
                             down.SetMarkerStyle(20)
                             down.SetMarkerSize(0)
-                            down.Scale(1./down.Integral())
+                            down.Add(nom, -1)
+                            #down.Scale(1./down.Integral())
 
                             l.AddEntry(up, "%s Up" % syst)
-                            l.AddEntry(nom, "nominal")
+                            #l.AddEntry(nom, "nominal")
                             l.AddEntry(down, "%s Down" % syst)
                         except KeyError:
                             down = None
@@ -686,11 +743,21 @@ def main():
                             l.AddEntry(nom, "nominal")
 
 
-                        maxH = {up:(0 if up == None else up.GetMaximum()), down:(0 if down == None else down.GetMaximum()), nom:nom.GetMaximum()}
+                        #maxH = {up:(0 if up == None else up.GetMaximum()), down:(0 if down == None else down.GetMaximum()), nom:nom.GetMaximum()}
+                        maxH = {up:(0 if up == None else up.GetMaximum()), down:(0 if down == None else down.GetMaximum())}
                         maxHsorted = sorted(maxH.items(), key=lambda kv: kv[1])
                         maxHsorted.reverse()
+                        
+                        minY = up.GetMinimum()
+                        maxY = up.GetMaximum()
 
-                        histsSorted = [hist[0] for hist in maxHsorted if hist[0] is not None]
+                        if down is not None:
+                            minY = min(minY, down.GetMinimum())
+                            maxY = max(maxY, down.GetMaximum())
+
+                        padding = 0.05*(maxY - minY)
+
+                        histsSorted = [hist[0].Clone("_"+hist[0].GetName()) for hist in maxHsorted if hist[0] is not None]
                         
                         canvasRatio.cd()
                         canvasRatio.ResetDrawn()
@@ -705,9 +772,10 @@ def main():
                         for i,hist in enumerate(histsSorted):
                             if i == 0:
                                 hist.Draw("hist 9")
-                                #hist.SetTitle("%s  %s  %s  %s%s" % ("t#bar{t}" if s == "tt" else "ST_tW",obs,syst,"" if args.interp =="" else args.interp+"  ","actual" if lvl == "actual" else "morphed"))
-                                hist.SetTitle("%s  %s  %s  %s" % ("t#bar{t}" if s == "tt" else "ST_tW",obs,syst,"" if args.interp =="" else args.interp+"  "))
-                                hist.GetYaxis().SetTitle("Normalized Entries / %s" % ("%.0f GeV" % (hist.GetBinCenter(2) - hist.GetBinCenter(1)) if not useVariableBinning else "Bin") )
+                                hist.GetYaxis().SetRangeUser(minY-padding, maxY+padding)
+                                #hist.SetTitle("%s  %s  %s  %s%s" % (signalTitle[s],obs,syst,"" if args.interp =="" else args.interp+"  ","actual" if lvl == "actual" else "morphed"))
+                                hist.SetTitle("%s  %s  %s  %s" % (signalTitle[s],obs,syst,"" if args.interp =="" else args.interp+"  "))
+                                hist.GetYaxis().SetTitle("%sEntries / %s" % ("Normalized " if args.norm else "", "%.0f GeV" % (hist.GetBinCenter(2) - hist.GetBinCenter(1)) if not useVariableBinning else "Bin") )
                                 hist.GetYaxis().SetTitleOffset(1.3)
                             else:
                                 hist.Draw("hist 9 same")
@@ -718,12 +786,12 @@ def main():
 
                         pad2.cd()
                         ratioUp = up.Clone()
-                        ratioUp.Add(nom,-1)
+                        #ratioUp.Add(nom,-1)
                         ratioUp.Divide(nom)   
                         ratioUp.SetTitle("")
-                        ratioUp.GetYaxis().SetTitle("ratio wrt nominal")
-                        ratioUp.GetYaxis().SetTitleOffset(1.2)
-                        ratioUp.GetYaxis().SetTitleSize(0.2)
+                        #ratioUp.GetYaxis().SetTitle("ratio wrt nominal")
+                        #ratioUp.GetYaxis().SetTitleOffset(1.2)
+                        #ratioUp.GetYaxis().SetTitleSize(0.2)
                         
                         ratioUp.GetXaxis().SetTitle(obsTitle[obs[4:]] + " [GeV]")
                         ratioUp.GetXaxis().SetTitleSize(0.1)
@@ -742,14 +810,14 @@ def main():
 
                         if down is not None:
                             ratioDown = down.Clone()
-                            ratioDown.Add(nom,-1)
+                            #ratioDown.Add(nom,-1)
                             ratioDown.Divide(nom)
                             minRatioY = min(minRatioY, ratioDown.GetMinimum())
                             maxRatioY = max(maxRatioY, ratioDown.GetMaximum())
 
                         
-                        minRatioY = min(minRatioY, 0.0)
-                        maxRatioY = max(maxRatioY, 0.0)
+                        #minRatioY = min(minRatioY, 0.0)
+                        #maxRatioY = max(maxRatioY, 0.0)
 
                         padding = 0.05*(maxRatioY - minRatioY)
                         ratioUp.GetYaxis().SetRangeUser(minRatioY-padding, maxRatioY+padding)
@@ -762,7 +830,8 @@ def main():
                         line = TLine(ratioUp.GetXaxis().GetBinLowEdge(1), 0.0, ratioUp.GetXaxis().GetBinUpEdge(ratioUp.GetNbinsX()), 0.0)
                         line.SetLineWidth(2)
                         line.Draw("same")
-                        canvasRatio.SaveAs("%s/histplots/reldiff_%s_%s_hist_%s_%s.png" % (args.outDir,"TTbar" if s == "tt" else "ST_tW",lvl,obs,syst))
+                        for fmt in args.format:
+                            canvasRatio.SaveAs("%s/%s/histplots/reldiff_%s_%s_hist_%s_%s.%s" % (args.outDir,obs,signalName[s],lvl,obs,syst,fmt))
     
 
             # Histograms
@@ -776,7 +845,7 @@ def main():
                         if s == "tt" and syst in tWOnlySysts: continue
                         if s == "tW" and syst in ttOnlySysts: continue
                         
-                        l = TLegend(0.75,0.7, 0.9,0.88)
+                        l = TLegend(0.75,0.7, 0.88,0.88)
                         l.SetBorderSize(0)
 
                         up = h[s][lvl][obs][syst]["Up"][1725].Clone()
@@ -815,9 +884,9 @@ def main():
                         for i,hist in enumerate(histsSorted):
                             if i == 0:
                                 hist.Draw("hist 9")
-                                #hist.SetTitle("%s  %s  %s  %s%s" % ("t#bar{t}" if s == "tt" else "ST_tW",obs,syst,"" if args.interp =="" else args.interp+"  ","actual" if lvl == "actual" else "morphed"))
-                                hist.SetTitle("%s  %s  %s  %s" % ("t#bar{t}" if s == "tt" else "ST_tW",obs,syst,"" if args.interp =="" else args.interp+"  "))
-                                hist.GetYaxis().SetTitle("Entries / %s" % ("%.0f GeV" % (hist.GetBinCenter(2) - hist.GetBinCenter(1)) if not useVariableBinning else "Bin" ) )
+                                #hist.SetTitle("%s  %s  %s  %s%s" % (signalTitle[s],obs,syst,"" if args.interp =="" else args.interp+"  ","actual" if lvl == "actual" else "morphed"))
+                                hist.SetTitle("%s  %s  %s  %s" % (signalTitle[s],obs,syst,"" if args.interp =="" else args.interp+"  "))
+                                hist.GetYaxis().SetTitle("%sEntries / %s" % ("Normalized " if args.norm else "", "%.0f GeV" % (hist.GetBinCenter(2) - hist.GetBinCenter(1)) if not useVariableBinning else "Bin" ) )
                                 hist.GetYaxis().SetTitleOffset(1.4)
                             else:
                                 hist.Draw("hist 9 same")
@@ -863,25 +932,97 @@ def main():
                         line = TLine(ratioUp.GetXaxis().GetBinLowEdge(1), 1.0, ratioUp.GetXaxis().GetBinUpEdge(ratioUp.GetNbinsX()), 1.0)
                         line.SetLineWidth(2)
                         line.Draw("same")
+                        for fmt in args.format:
+                            canvasRatio.SaveAs("%s/%s/histplots/%s_%s_hist_%s_%s.%s" % (args.outDir,obs,signalName[s],lvl,obs,syst,fmt))
+                        
+                    if s == "tt":                    
+                        # Draw ME scale systematics on one plot:
+                        canvasRatio.cd()
+                        canvasRatio.ResetDrawn()
+                        canvasRatio.Draw()
+                        canvasRatio.cd()
 
-                        canvasRatio.SaveAs("%s/histplots/%s_%s_hist_%s_%s.png" % (args.outDir,"TTbar" if s == "tt" else "ST_tW",lvl,obs,syst))
+                        pad1.Draw()
+                        pad2.Draw()
 
+                        pad1.cd()
+                            
+                        l = TLegend(0.72,0.65, 0.88,0.88)
+                        l.SetBorderSize(0)
+                        l.AddEntry(nom, "nominal")
+                        minY = nom.GetMinimum()
+                        maxY = nom.GetMaximum()
+
+                        MEscaleHists = {}
+                        for syst in MEscaleSysts:
+                            if syst not in systematics: continue  # Skip this one
+                            MEscaleHists[syst] = h[s][lvl][obs][syst]["Up"][1725].Clone()
+                            MEscaleHists[syst].Rebin(args.rebin)
+                            MEscaleHists[syst].SetLineColor(MEscaleColor[syst])
+                            MEscaleHists[syst].SetLineWidth(2)
+                            MEscaleHists[syst].SetMarkerStyle(20)
+                            MEscaleHists[syst].SetMarkerSize(0)
+
+                            minY = min(minY, MEscaleHists[syst].GetMinimum())
+                            maxY = max(maxY, MEscaleHists[syst].GetMaximum())
+                            l.AddEntry(MEscaleHists[syst], syst)
+                       
+                        paddingY = 0.1 * (maxY - minY)
+                        nom.SetTitle("%s  %s  ME scales" % (s,obsTitle[obs[4:]]) )
+                        nom.Draw("hist")
+                        nom.GetYaxis().SetRangeUser(max(minY - paddingY,0), maxY + paddingY)
+                        for syst in MEscaleSysts:
+                            if syst not in systematics: continue  # Skip this one
+                            MEscaleHists[syst].Draw("hist same")
+
+                        CMS_lumi.CMS_lumi(pad1, 4, 12)
+                        l.Draw("same")
+
+                        pad2.cd()
+
+                        line = TLine(nom.GetXaxis().GetBinLowEdge(1), 1.0, nom.GetXaxis().GetBinUpEdge(ratioUp.GetNbinsX()), 1.0)
+                        line.SetLineWidth(2)
+                       
+                        minRatioY = 0.95
+                        maxRatioY = 1.05
+                        
+                        ratioMEscale = []
+                        for syst in MEscaleSysts:
+                            if syst not in systematics: continue  # Skip this one
+                            ratioMEscale.append(MEscaleHists[syst].Clone("ratio_%s" % syst))
+                            ratioMEscale[-1].Divide(nom)
+                            minRatioY = min(minRatioY, ratioMEscale[-1].GetMinimum())
+                            maxRatioY = max(maxRatioY, ratioMEscale[-1].GetMaximum())
+
+                        paddingRatioY = 0.1 * (maxRatioY - minRatioY)
+                        for i,_h in enumerate(ratioMEscale):
+                            if i == 0:
+                                _h.SetTitle("")
+                                _h.Draw("hist")
+                                _h.GetYaxis().SetRangeUser(minRatioY - paddingRatioY, maxRatioY + paddingRatioY)
+                            else:
+                                _h.Draw("hist same")
+
+                        line.Draw("same")
+                        for fmt in args.format:
+                            canvasRatio.SaveAs("%s/%s/histplots/MEscales_%s_%s_%s.%s" % (args.outDir,obs,signalName[s],lvl,obs,fmt))
 
         for lvl in ['actual','morph']:
             # Graphs
             N = len(masses[s][lvl])
             mtmasses = [float(m)/10. for m in masses[s][lvl]]
             for obs in observables:
-                # Moment graphs
-                g[s][lvl][obs] = { "nominal":{} }
-                g[s][lvl][obs]["nominal"]["m1"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs]["nominal"]["m1"]), array('d', [0.]*N), array('d', moments[s][lvl][obs]["nominal"]["m1err"]))
-                g[s][lvl][obs]["nominal"]["m1"].SetName("%s_%s_%s_nominal_m1"%(s,lvl,obs))
-                g[s][lvl][obs]["nominal"]["m2"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs]["nominal"]["m2"]), array('d', [0.]*N), array('d', moments[s][lvl][obs]["nominal"]["m2err"]))
-                g[s][lvl][obs]["nominal"]["m2"].SetName("%s_%s_%s_nominal_m2"%(s,lvl,obs))
-                g[s][lvl][obs]["nominal"]["m3"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs]["nominal"]["m3"]), array('d', [0.]*N), array('d', moments[s][lvl][obs]["nominal"]["m3err"]))
-                g[s][lvl][obs]["nominal"]["m3"].SetName("%s_%s_%s_nominal_m3"%(s,lvl,obs))
-                g[s][lvl][obs]["nominal"]["m4"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs]["nominal"]["m4"]), array('d', [0.]*N), array('d', moments[s][lvl][obs]["nominal"]["m4err"]))
-                g[s][lvl][obs]["nominal"]["m4"].SetName("%s_%s_%s_nominal_m4"%(s,lvl,obs))
+                if not args.nomoments:
+                    # Moment graphs
+                    g[s][lvl][obs] = { "nominal":{} }
+                    g[s][lvl][obs]["nominal"]["m1"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs]["nominal"]["m1"]), array('d', [0.]*N), array('d', moments[s][lvl][obs]["nominal"]["m1err"]))
+                    g[s][lvl][obs]["nominal"]["m1"].SetName("%s_%s_%s_nominal_m1"%(s,lvl,obs))
+                    g[s][lvl][obs]["nominal"]["m2"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs]["nominal"]["m2"]), array('d', [0.]*N), array('d', moments[s][lvl][obs]["nominal"]["m2err"]))
+                    g[s][lvl][obs]["nominal"]["m2"].SetName("%s_%s_%s_nominal_m2"%(s,lvl,obs))
+                    g[s][lvl][obs]["nominal"]["m3"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs]["nominal"]["m3"]), array('d', [0.]*N), array('d', moments[s][lvl][obs]["nominal"]["m3err"]))
+                    g[s][lvl][obs]["nominal"]["m3"].SetName("%s_%s_%s_nominal_m3"%(s,lvl,obs))
+                    g[s][lvl][obs]["nominal"]["m4"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs]["nominal"]["m4"]), array('d', [0.]*N), array('d', moments[s][lvl][obs]["nominal"]["m4err"]))
+                    g[s][lvl][obs]["nominal"]["m4"].SetName("%s_%s_%s_nominal_m4"%(s,lvl,obs))
 
                 # Rate graphs
                 rateG[s][lvl][obs] = { "nominal":{} }
@@ -897,12 +1038,13 @@ def main():
                 for syst in systematics:
                     if s == "tt" and syst in tWOnlySysts: continue
                     if s == "tW" and syst in ttOnlySysts: continue
-                    # Syst moment graphs
-                    g[s][lvl][obs][syst] = {"Up":{}}
-                    g[s][lvl][obs][syst]["Up"]["m1"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Up"]["m1"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Up"]["m1err"]))
-                    g[s][lvl][obs][syst]["Up"]["m2"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Up"]["m2"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Up"]["m2err"]))
-                    g[s][lvl][obs][syst]["Up"]["m3"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Up"]["m3"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Up"]["m3err"]))
-                    g[s][lvl][obs][syst]["Up"]["m4"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Up"]["m4"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Up"]["m4err"]))
+                    if not args.nomoments:
+                        # Syst moment graphs
+                        g[s][lvl][obs][syst] = {"Up":{}}
+                        g[s][lvl][obs][syst]["Up"]["m1"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Up"]["m1"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Up"]["m1err"]))
+                        g[s][lvl][obs][syst]["Up"]["m2"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Up"]["m2"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Up"]["m2err"]))
+                        g[s][lvl][obs][syst]["Up"]["m3"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Up"]["m3"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Up"]["m3err"]))
+                        g[s][lvl][obs][syst]["Up"]["m4"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Up"]["m4"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Up"]["m4err"]))
                     
                     # Syst rate graphs
                     rateG[s][lvl][obs][syst] = {}
@@ -915,11 +1057,12 @@ def main():
 
 
                     if syst not in oneSidedSysts:
-                        g[s][lvl][obs][syst]["Down"] = {}
-                        g[s][lvl][obs][syst]["Down"]["m1"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Down"]["m1"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Down"]["m1err"]))
-                        g[s][lvl][obs][syst]["Down"]["m2"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Down"]["m2"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Down"]["m2err"]))
-                        g[s][lvl][obs][syst]["Down"]["m3"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Down"]["m3"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Down"]["m3err"]))
-                        g[s][lvl][obs][syst]["Down"]["m4"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Down"]["m4"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Down"]["m4err"]))
+                        if not args.nomoments:
+                            g[s][lvl][obs][syst]["Down"] = {}
+                            g[s][lvl][obs][syst]["Down"]["m1"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Down"]["m1"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Down"]["m1err"]))
+                            g[s][lvl][obs][syst]["Down"]["m2"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Down"]["m2"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Down"]["m2err"]))
+                            g[s][lvl][obs][syst]["Down"]["m3"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Down"]["m3"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Down"]["m3err"]))
+                            g[s][lvl][obs][syst]["Down"]["m4"] = TGraphErrors(N, array('d',mtmasses), array('d',moments[s][lvl][obs][syst]["Down"]["m4"]), array('d', [0.]*N), array('d', moments[s][lvl][obs][syst]["Down"]["m4err"]))
 
                         rateG[s][lvl][obs][syst]["Down"] = TGraphErrors(N, array('d',mtmasses), array('d',rates[s][lvl][obs][syst]["Down"]["rate"]), array('d', [0.]*N), array('d', rates[s][lvl][obs][syst]["Down"]["rateError"]))
                         rateG[s][lvl][obs][syst]["Down"].SetName("rate_%s_%s_%s_%sDown" % (s,lvl,obs,syst))
@@ -935,129 +1078,137 @@ def main():
         for s in signal:
             for lvl in ['actual','morph']:
                 for obs in observables:
-                    g[s][lvl][obs]["nominal"]["m1"].Write("%s_%s_%s_nominal_m1"%(s,lvl,obs))
-                    g[s][lvl][obs]["nominal"]["m2"].Write("%s_%s_%s_nominal_m2"%(s,lvl,obs))
-                    g[s][lvl][obs]["nominal"]["m3"].Write("%s_%s_%s_nominal_m3"%(s,lvl,obs))
-                    g[s][lvl][obs]["nominal"]["m4"].Write("%s_%s_%s_nominal_m4"%(s,lvl,obs))
+                    if not args.nomoments:
+                        g[s][lvl][obs]["nominal"]["m1"].Write("%s_%s_%s_nominal_m1"%(s,lvl,obs))
+                        g[s][lvl][obs]["nominal"]["m2"].Write("%s_%s_%s_nominal_m2"%(s,lvl,obs))
+                        g[s][lvl][obs]["nominal"]["m3"].Write("%s_%s_%s_nominal_m3"%(s,lvl,obs))
+                        g[s][lvl][obs]["nominal"]["m4"].Write("%s_%s_%s_nominal_m4"%(s,lvl,obs))
                    
                     rateG[s][lvl][obs]["nominal"].Write()                    
 
                     for syst in systematics:
                         if s == "tt" and syst in tWOnlySysts: continue
                         if s == "tW" and syst in ttOnlySysts: continue
-                        g[s][lvl][obs][syst]["Up"]["m1"].Write("%s_%s_%s_%sUp_m1"%(s,lvl,obs,syst))
-                        g[s][lvl][obs][syst]["Up"]["m2"].Write("%s_%s_%s_%sUp_m2"%(s,lvl,obs,syst))
-                        g[s][lvl][obs][syst]["Up"]["m3"].Write("%s_%s_%s_%sUp_m3"%(s,lvl,obs,syst))
-                        g[s][lvl][obs][syst]["Up"]["m4"].Write("%s_%s_%s_%sUp_m4"%(s,lvl,obs,syst))
+                        if not args.nomoments:
+                            g[s][lvl][obs][syst]["Up"]["m1"].Write("%s_%s_%s_%sUp_m1"%(s,lvl,obs,syst))
+                            g[s][lvl][obs][syst]["Up"]["m2"].Write("%s_%s_%s_%sUp_m2"%(s,lvl,obs,syst))
+                            g[s][lvl][obs][syst]["Up"]["m3"].Write("%s_%s_%s_%sUp_m3"%(s,lvl,obs,syst))
+                            g[s][lvl][obs][syst]["Up"]["m4"].Write("%s_%s_%s_%sUp_m4"%(s,lvl,obs,syst))
                         rateG[s][lvl][obs][syst]["Up"].Write()
                         if syst not in oneSidedSysts:
-                            g[s][lvl][obs][syst]["Down"]["m1"].Write("%s_%s_%s_%sDown_m1"%(s,lvl,obs,syst))
-                            g[s][lvl][obs][syst]["Down"]["m2"].Write("%s_%s_%s_%sDown_m2"%(s,lvl,obs,syst))
-                            g[s][lvl][obs][syst]["Down"]["m3"].Write("%s_%s_%s_%sDown_m3"%(s,lvl,obs,syst))
-                            g[s][lvl][obs][syst]["Down"]["m4"].Write("%s_%s_%s_%sDown_m4"%(s,lvl,obs,syst))
+                            if not args.nomoments:
+                                g[s][lvl][obs][syst]["Down"]["m1"].Write("%s_%s_%s_%sDown_m1"%(s,lvl,obs,syst))
+                                g[s][lvl][obs][syst]["Down"]["m2"].Write("%s_%s_%s_%sDown_m2"%(s,lvl,obs,syst))
+                                g[s][lvl][obs][syst]["Down"]["m3"].Write("%s_%s_%s_%sDown_m3"%(s,lvl,obs,syst))
+                                g[s][lvl][obs][syst]["Down"]["m4"].Write("%s_%s_%s_%sDown_m4"%(s,lvl,obs,syst))
                             rateG[s][lvl][obs][syst]["Down"].Write()
 
-    with gzip.open("moments.pklz", "wb") as mf:
-        pickle.dump(moments, mf, protocol=pickle.HIGHEST_PROTOCOL)
+    if not args.nomoments:
+        with gzip.open("%s/moments.pklz"%args.outDir, "wb") as mf:
+            pickle.dump(moments, mf, protocol=pickle.HIGHEST_PROTOCOL)
 
 
     c.cd()
 
-    if not args.noplots: print "About to draw plots"
-    mg = {}
-    fitLines = {}
-    for s in signal:
-        mg[s] = {"actual":{}, "morph":{}}
-        fitLines[s] = {"actual":{}, "morph":{}}
-        for lvl in ['actual','morph']:
-            for obs in observables:
-                mg[s][lvl][obs] = {}
-                fitLines[s][lvl][obs] = {"nominal":{}}
-                
-                for moment in ["m1","m2","m3","m4"]:
-                    if not args.nocalibration and not args.noplots:
-                        # Draw calibration curve
-                        reclvl,obsname = obs.split("_")
-                        calib[s][lvl][obs][moment].calibG.SetTitle("%s %s  %s  Moment %s  Calibration curve" % (reclvl, obsTitle[obsname], lvl, moment[1]))
-                        calib[s][lvl][obs][moment].calibG.Draw("ap")
-                        txt.DrawLatex(0.6, 0.35, "Slope")
-                        txt.DrawLatex(0.75, 0.35, "Offset")
-                        txt.DrawLatex(0.57, 0.3, "%.4f #pm %.4f" % (calib[s][lvl][obs][moment].slope, calib[s][lvl][obs][moment].slopeError))
-                        txt.DrawLatex(0.72, 0.3, "%.4f #pm %.4f" % (calib[s][lvl][obs][moment].offset, calib[s][lvl][obs][moment].offsetError))
-
-                        
-                        c.SaveAs("%s/calibration/calibration_%s_%s_%s_%s.png" % (args.outDir,s,lvl,obs,moment))
-                        
-                    # Get nominal fit line
-                    g[s][lvl][obs]["nominal"][moment].Fit("pol1", "Q")
-                    fitLines[s][lvl][obs]["nominal"][moment] = g[s][lvl][obs]["nominal"][moment].GetFunction("pol1") 
-                    fitLines[s][lvl][obs]["nominal"][moment].SetLineColor(kBlack)    
-                
-
-                for syst in systematics:
-                    #if lvl == "actual" and syst in separateSystSamples: continue
-                    if s == "tt" and syst in tWOnlySysts: continue
-                    if s == "tW" and syst in ttOnlySysts: continue
-                    mg[s][lvl][obs][syst] = {}
-                    fitLines[s][lvl][obs][syst] = {"Up":{}}
-                    if syst not in oneSidedSysts:
-                        fitLines[s][lvl][obs][syst]["Down"] = {}
+    if not args.nomoments:
+        if not args.noplots: print "About to draw moment plots"
+        mg = {}
+        fitLines = {}
+        for s in signal:
+            mg[s] = {"actual":{}, "morph":{}}
+            fitLines[s] = {"actual":{}, "morph":{}}
+            for lvl in ['actual','morph']:
+                for obs in observables:
+                    mg[s][lvl][obs] = {}
+                    fitLines[s][lvl][obs] = {"nominal":{}}
                     
                     for moment in ["m1","m2","m3","m4"]:
-                        l = TLegend(0.12,0.7, 0.3,0.88)
-                        l.SetBorderSize(0)
+                        if not args.nocalibration and not args.noplots:
+                            # Draw calibration curve
+#                        reclvl,obsname = obs.split("_")
+                            reclvl = obs[:3]
+                            obsname = obs[4:]
+                            calib[s][lvl][obs][moment].calibG.SetTitle("%s %s  %s  Moment %s  Calibration curve" % (reclvl, obsTitle[obsname], lvl, moment[1]))
+                            calib[s][lvl][obs][moment].calibG.Draw("ap")
+                            txt.DrawLatex(0.6, 0.35, "Slope")
+                            txt.DrawLatex(0.75, 0.35, "Offset")
+                            txt.DrawLatex(0.57, 0.3, "%.4f #pm %.4f" % (calib[s][lvl][obs][moment].slope, calib[s][lvl][obs][moment].slopeError))
+                            txt.DrawLatex(0.72, 0.3, "%.4f #pm %.4f" % (calib[s][lvl][obs][moment].offset, calib[s][lvl][obs][moment].offsetError))
+
+                            for fmt in args.format: 
+                                c.SaveAs("%s/%s/calibration/calibration_%s_%s_%s_%s.%s" % (args.outDir,obs,s,lvl,obs,moment,fmt))
+                            
+                        # Get nominal fit line
+                        g[s][lvl][obs]["nominal"][moment].Fit("pol1", "Q")
+                        fitLines[s][lvl][obs]["nominal"][moment] = g[s][lvl][obs]["nominal"][moment].GetFunction("pol1") 
+                        fitLines[s][lvl][obs]["nominal"][moment].SetLineColor(kBlack)    
+                    
+
+                    for syst in systematics:
+                        #if lvl == "actual" and syst in separateSystSamples: continue
+                        if s == "tt" and syst in tWOnlySysts: continue
+                        if s == "tW" and syst in ttOnlySysts: continue
+                        mg[s][lvl][obs][syst] = {}
+                        fitLines[s][lvl][obs][syst] = {"Up":{}}
+                        if syst not in oneSidedSysts:
+                            fitLines[s][lvl][obs][syst]["Down"] = {}
+                        
+                        for moment in ["m1","m2","m3","m4"]:
+                            l = TLegend(0.12,0.7, 0.3,0.88)
+                            l.SetBorderSize(0)
 
 #                        l.AddEntry(g[s][lvl][obs]["nominal"][moment], "nominal", "l")
 #                        g[s][lvl][obs]["nominal"][moment].Fit("pol1","Q")
 #                        g[s][lvl][obs]["nominal"][moment].GetFunction("pol1").SetLineColor(kBlack)
 #                        nomFit = g[s][lvl][obs]["nominal"][moment].GetFunction("pol1")
 
-                        g[s][lvl][obs][syst]["Up"][moment].Fit("pol1","Q")
-                        g[s][lvl][obs][syst]["Up"][moment].SetLineColor(kRed)
-                        g[s][lvl][obs][syst]["Up"][moment].GetFunction("pol1").SetLineColor(kRed)
+                            g[s][lvl][obs][syst]["Up"][moment].Fit("pol1","Q")
+                            g[s][lvl][obs][syst]["Up"][moment].SetLineColor(kRed)
+                            g[s][lvl][obs][syst]["Up"][moment].GetFunction("pol1").SetLineColor(kRed)
 #                        upFit = g[s][lvl][obs][syst]["Up"][moment].GetFunction("pol1")
-                        fitLines[s][lvl][obs][syst]["Up"][moment] = g[s][lvl][obs][syst]["Up"][moment].GetFunction("pol1")
-                        
-                        
-                        l.AddEntry(g[s][lvl][obs][syst]["Up"][moment], "%s%s" % (syst, " Up" if syst not in oneSidedSysts else ""), "l")
-
-                        mg[s][lvl][obs][syst][moment] = TMultiGraph()
-                        mg[s][lvl][obs][syst][moment].SetName("%s_%s_%s_%s_%s"%(s,lvl,obs,syst,moment))
-
-                        mg[s][lvl][obs][syst][moment].Add(g[s][lvl][obs]["nominal"][moment].Clone(), "p")
-                        mg[s][lvl][obs][syst][moment].Add(g[s][lvl][obs][syst]["Up"][moment].Clone(), "p")
-                        if syst not in oneSidedSysts:
-                            g[s][lvl][obs][syst]["Down"][moment].Fit("pol1","Q")
-                            g[s][lvl][obs][syst]["Down"][moment].SetLineColor(kBlue)
-                            g[s][lvl][obs][syst]["Down"][moment].GetFunction("pol1").SetLineColor(kBlue)
-#                            downFit = g[s][lvl][obs][syst]["Down"][moment].GetFunction("pol1")
-                            fitLines[s][lvl][obs][syst]["Down"][moment] = g[s][lvl][obs][syst]["Down"][moment].GetFunction("pol1")
-                            mg[s][lvl][obs][syst][moment].Add(g[s][lvl][obs][syst]["Down"][moment].Clone(), "p")
-                            l.AddEntry(g[s][lvl][obs][syst]["Down"][moment], "%s Down" % syst, "l")
-
-                        
-                        if not args.noplots:
-                            mg[s][lvl][obs][syst][moment].SetTitle("%s  %s  %s  %s%s  Moment %s" % ("t#bar{t}" if s == "tt" else "St tW",obs,syst,"" if args.interp =="" else args.interp+"  ","actual" if lvl == "actual" else "morphed",moment[1]))
-                            mg[s][lvl][obs][syst][moment].Draw("a9")
-
-                            mg[s][lvl][obs][syst][moment].GetXaxis().SetTitle("m_{t} [GeV]")
-                            mg[s][lvl][obs][syst][moment].GetYaxis().SetTitle("%s [GeV]%s" % (moment, "" if moment == "m1" else "^{%s}"%moment[1]))
-                            mg[s][lvl][obs][syst][moment].GetYaxis().SetTitleOffset(1.2)
-
-                            l.Draw("same")
-                            txt.DrawLatex(0.44, 0.35, "Moment %s Slopes"%moment[1])
-                            txt.DrawLatex(0.42, 0.3, "#color[2]{Up: %.4f #pm %.4f}" % (fitLines[s][lvl][obs][syst]["Up"][moment].GetParameter(1), fitLines[s][lvl][obs][syst]["Up"][moment].GetParError(1)))
-                            txt.DrawLatex(0.407, 0.25,  "Nom: %.4f #pm %.4f" % (fitLines[s][lvl][obs]["nominal"][moment].GetParameter(1), fitLines[s][lvl][obs]["nominal"][moment].GetParError(1)))
-                            if syst not in oneSidedSysts:
-                                txt.DrawLatex(0.4, 0.2, "#color[4]{Down: %.4f #pm %.4f}" % (fitLines[s][lvl][obs][syst]["Down"][moment].GetParameter(1), fitLines[s][lvl][obs][syst]["Down"][moment].GetParError(1)))
+                            fitLines[s][lvl][obs][syst]["Up"][moment] = g[s][lvl][obs][syst]["Up"][moment].GetFunction("pol1")
                             
-                            txt.DrawLatex(0.76, 0.35, "Offsets")
-                            txt.DrawLatex(0.72, 0.3, "#color[2]{Up: %.4f #pm %.4f}" % (fitLines[s][lvl][obs][syst]["Up"][moment].GetParameter(0), fitLines[s][lvl][obs][syst]["Up"][moment].GetParError(0)))
-                            txt.DrawLatex(0.707, 0.25,  "Nom: %.4f #pm %.4f" % (fitLines[s][lvl][obs]["nominal"][moment].GetParameter(0), fitLines[s][lvl][obs]["nominal"][moment].GetParError(0)))
-                            if syst not in oneSidedSysts:
-                                txt.DrawLatex(0.7, 0.2, "#color[4]{Down: %.4f #pm %.4f}" % (fitLines[s][lvl][obs][syst]["Down"][moment].GetParameter(0), fitLines[s][lvl][obs][syst]["Down"][moment].GetParError(0)))
+                            
+                            l.AddEntry(g[s][lvl][obs][syst]["Up"][moment], "%s%s" % (syst, " Up" if syst not in oneSidedSysts else ""), "l")
 
-                            c.SaveAs("%s/%s_%s_%s_%s_%s.png" % (args.outDir,"TTbar" if s == "tt" else "ST_tW",lvl,obs,syst,moment))
+                            mg[s][lvl][obs][syst][moment] = TMultiGraph()
+                            mg[s][lvl][obs][syst][moment].SetName("%s_%s_%s_%s_%s"%(s,lvl,obs,syst,moment))
+
+                            mg[s][lvl][obs][syst][moment].Add(g[s][lvl][obs]["nominal"][moment].Clone(), "p")
+                            mg[s][lvl][obs][syst][moment].Add(g[s][lvl][obs][syst]["Up"][moment].Clone(), "p")
+                            if syst not in oneSidedSysts:
+                                g[s][lvl][obs][syst]["Down"][moment].Fit("pol1","Q")
+                                g[s][lvl][obs][syst]["Down"][moment].SetLineColor(kBlue)
+                                g[s][lvl][obs][syst]["Down"][moment].GetFunction("pol1").SetLineColor(kBlue)
+#                            downFit = g[s][lvl][obs][syst]["Down"][moment].GetFunction("pol1")
+                                fitLines[s][lvl][obs][syst]["Down"][moment] = g[s][lvl][obs][syst]["Down"][moment].GetFunction("pol1")
+                                mg[s][lvl][obs][syst][moment].Add(g[s][lvl][obs][syst]["Down"][moment].Clone(), "p")
+                                l.AddEntry(g[s][lvl][obs][syst]["Down"][moment], "%s Down" % syst, "l")
+
+                            
+                            if not args.noplots:
+                                mg[s][lvl][obs][syst][moment].SetTitle("%s  %s  %s  %s%s  Moment %s" % (signalTitle[s],obs,syst,"" if args.interp =="" else args.interp+"  ","actual" if lvl == "actual" else "morphed",moment[1]))
+                                mg[s][lvl][obs][syst][moment].Draw("a9")
+
+                                mg[s][lvl][obs][syst][moment].GetXaxis().SetTitle("m_{t} [GeV]")
+                                mg[s][lvl][obs][syst][moment].GetYaxis().SetTitle("%s [GeV]%s" % (moment, "" if moment == "m1" else "^{%s}"%moment[1]))
+                                mg[s][lvl][obs][syst][moment].GetYaxis().SetTitleOffset(1.2)
+
+                                l.Draw("same")
+                                txt.DrawLatex(0.44, 0.35, "Moment %s Slopes"%moment[1])
+                                txt.DrawLatex(0.42, 0.3, "#color[2]{Up: %.4f #pm %.4f}" % (fitLines[s][lvl][obs][syst]["Up"][moment].GetParameter(1), fitLines[s][lvl][obs][syst]["Up"][moment].GetParError(1)))
+                                txt.DrawLatex(0.407, 0.25,  "Nom: %.4f #pm %.4f" % (fitLines[s][lvl][obs]["nominal"][moment].GetParameter(1), fitLines[s][lvl][obs]["nominal"][moment].GetParError(1)))
+                                if syst not in oneSidedSysts:
+                                    txt.DrawLatex(0.4, 0.2, "#color[4]{Down: %.4f #pm %.4f}" % (fitLines[s][lvl][obs][syst]["Down"][moment].GetParameter(1), fitLines[s][lvl][obs][syst]["Down"][moment].GetParError(1)))
+                                
+                                txt.DrawLatex(0.76, 0.35, "Offsets")
+                                txt.DrawLatex(0.72, 0.3, "#color[2]{Up: %.4f #pm %.4f}" % (fitLines[s][lvl][obs][syst]["Up"][moment].GetParameter(0), fitLines[s][lvl][obs][syst]["Up"][moment].GetParError(0)))
+                                txt.DrawLatex(0.707, 0.25,  "Nom: %.4f #pm %.4f" % (fitLines[s][lvl][obs]["nominal"][moment].GetParameter(0), fitLines[s][lvl][obs]["nominal"][moment].GetParError(0)))
+                                if syst not in oneSidedSysts:
+                                    txt.DrawLatex(0.7, 0.2, "#color[4]{Down: %.4f #pm %.4f}" % (fitLines[s][lvl][obs][syst]["Down"][moment].GetParameter(0), fitLines[s][lvl][obs][syst]["Down"][moment].GetParError(0)))
+                                
+                                for fmt in args.format:
+                                    c.SaveAs("%s/%s/%s_%s_%s_%s_%s.%s" % (args.outDir,obs,signalName[s],lvl,obs,syst,moment,fmt))
 
     
     # Compare morphed/actual moments and rates
@@ -1090,7 +1241,8 @@ def main():
                 rateMG[s][obs]["nominal"].GetYaxis().SetTitle("Rate")
 
                 l.Draw("same")
-                c.SaveAs("%s/rates/rate_%s_%s_nominal.png" % (args.outDir, "TTbar" if s == "tt" else "ST_tW",obs))
+                for fmt in args.format:
+                    c.SaveAs("%s/%s/rates/rate_%s_%s_nominal.%s" % (args.outDir, obs,signalName[s],obs,fmt))
 
             for syst in systematics:
                 if s == "tt" and syst in tWOnlySysts: continue
@@ -1112,7 +1264,8 @@ def main():
                     rateMG[s][obs][syst]["Up"].GetYaxis().SetTitle("Rate")
 
                     l.Draw("same")
-                    c.SaveAs("%s/rates/rate_%s_%s_%s%s.png" % (args.outDir, "TTbar" if s == "tt" else "ST_tW",obs,syst," Up" if syst not in oneSidedSysts else ""))
+                    for fmt in args.format:
+                        c.SaveAs("%s/%s/rates/rate_%s_%s_%s%s.%s" % (args.outDir, obs, signalName[s],obs,syst," Up" if syst not in oneSidedSysts else "",fmt))
                 
                 if syst not in oneSidedSysts:
                     rateMG[s][obs][syst]["Down"] = TMultiGraph()
@@ -1132,171 +1285,176 @@ def main():
                         rateMG[s][obs][syst]["Down"].GetYaxis().SetTitle("Rate")
 
                         l.Draw("same")
-                        c.SaveAs("%s/rates/rate_%s_%s_%sDown.png" % (args.outDir, "TTbar" if s == "tt" else "ST_tW",obs,syst))
+                        for fmt in args.format:
+                            c.SaveAs("%s/%s/rates/rate_%s_%s_%sDown.%s" % (args.outDir, obs, signalName[s],obs,syst,fmt))
 
 
 
     if not args.noplots:
         f.Close()
 
-    # Extracted masses
-    uncalibrated_mt = {}
-    calibrated_mt = {}
-    for s in ["tt"]:
-        uncalibrated_mt[s] = {}
-        calibrated_mt[s] = {}
 
-        for lvl in ["actual","morph"]:
-            uncalibrated_mt[s][lvl] = {}
-            calibrated_mt[s][lvl] = {}
+    if not args.nomoments:
+        # Extracted masses
+        uncalibrated_mt = {}
+        calibrated_mt = {}
+        for s in ["tttW"]:
+            uncalibrated_mt[s] = {}
+            calibrated_mt[s] = {}
 
-
-            for obs in observables:
-                uncalibrated_mt[s][lvl][obs] = {"nominal":{}} 
-                calibrated_mt[s][lvl][obs] = {"nominal":{}} 
-                #uncalibrated_mt[s][lvl][obs] = { "nominal":{},"stat":{"Up":{}, "Down":{}} }
-                #calibrated_mt[s][lvl][obs] = { "nominal":{},"stat":{"Up":{}, "Down":{}} } 
-                
-
-                 
-                for moment in ["m1", "m2", "m3", "m4"]:
-                    uncalibrated_mt[s][lvl][obs]["nominal"][moment] = {"mass":{}, "error":{}}
-                    if not args.nocalibration: 
-                        calibrated_mt[s][lvl][obs]["nominal"][moment] = {"mass":{}, "error":{}}
-                
-                    # 172.5 value is midpoint of list
-                    nomEntry = len(moments[s][lvl][obs]["nominal"][moment]) // 2
-
-                    # Nominal moment and statistical uncertainty
-                    nom_mt, nom_mterr = massFromMoment(fitLines[s][lvl][obs]["nominal"][moment], moments[s][lvl][obs]["nominal"][moment][nomEntry], moments[s][lvl][obs]["nominal"][moment+"err"][nomEntry])
-                    uncalibrated_mt[s][lvl][obs]["nominal"][moment]["mass"] = nom_mt
-                    uncalibrated_mt[s][lvl][obs]["nominal"][moment]["error"] = nom_mterr
-
-                    if not args.nocalibration:
-                        calibrated_nom_mt = calib[s][lvl][obs][moment].calibrate(nom_mt)
-                        calibrated_mt[s][lvl][obs]["nominal"][moment]["mass"] = calibrated_nom_mt
-                        calibrated_mt[s][lvl][obs]["nominal"][moment]["error"] = calib[s][lvl][obs][moment].calibrateError(nom_mterr)
+            for lvl in ["actual","morph"]:
+                uncalibrated_mt[s][lvl] = {}
+                calibrated_mt[s][lvl] = {}
 
 
-                    for syst in systematics:
-                        #if lvl == "actual" and syst in separateSystSamples: continue
-                        if s == "tt" and syst in tWOnlySysts: continue
-                        if s == "tW" and syst in ttOnlySysts: continue
-                        if syst not in uncalibrated_mt[s][lvl][obs]:
-                            uncalibrated_mt[s][lvl][obs][syst] = {"Up":{}}
-                            if not args.nocalibration:
-                                calibrated_mt[s][lvl][obs][syst] = {"Up":{}}
-                            #uncalibrated_mt[s][lvl][obs][syst] = {"Up":{moment:{}}}
-                            #calibrated_mt[s][lvl][obs][syst] = {"Up":{moment:{}}}
-                            
-                            if sys not in oneSidedSysts:
-                                uncalibrated_mt[s][lvl][obs][syst]["Down"] = {}
+                for obs in observables:
+                    uncalibrated_mt[s][lvl][obs] = {"nominal":{}} 
+                    calibrated_mt[s][lvl][obs] = {"nominal":{}} 
+                    #uncalibrated_mt[s][lvl][obs] = { "nominal":{},"stat":{"Up":{}, "Down":{}} }
+                    #calibrated_mt[s][lvl][obs] = { "nominal":{},"stat":{"Up":{}, "Down":{}} } 
+                    
+
+                     
+                    for moment in ["m1", "m2", "m3", "m4"]:
+                        uncalibrated_mt[s][lvl][obs]["nominal"][moment] = {"mass":{}, "error":{}}
+                        if not args.nocalibration: 
+                            calibrated_mt[s][lvl][obs]["nominal"][moment] = {"mass":{}, "error":{}}
+                    
+                        # 172.5 value is midpoint of list
+                        nomEntry = len(moments[s][lvl][obs]["nominal"][moment]) // 2
+
+                        # Nominal moment and statistical uncertainty
+                        nom_mt, nom_mterr = massFromMoment(fitLines[s][lvl][obs]["nominal"][moment], moments[s][lvl][obs]["nominal"][moment][nomEntry], moments[s][lvl][obs]["nominal"][moment+"err"][nomEntry])
+                        uncalibrated_mt[s][lvl][obs]["nominal"][moment]["mass"] = nom_mt
+                        uncalibrated_mt[s][lvl][obs]["nominal"][moment]["error"] = nom_mterr
+
+                        if not args.nocalibration:
+                            calibrated_nom_mt = calib[s][lvl][obs][moment].calibrate(nom_mt)
+                            calibrated_mt[s][lvl][obs]["nominal"][moment]["mass"] = calibrated_nom_mt
+                            calibrated_mt[s][lvl][obs]["nominal"][moment]["error"] = calib[s][lvl][obs][moment].calibrateError(nom_mterr)
+
+
+                        for syst in systematics:
+                            #if lvl == "actual" and syst in separateSystSamples: continue
+                            if s == "tt" and syst in tWOnlySysts: continue
+                            if s == "tW" and syst in ttOnlySysts: continue
+                            if syst not in uncalibrated_mt[s][lvl][obs]:
+                                uncalibrated_mt[s][lvl][obs][syst] = {"Up":{}}
                                 if not args.nocalibration:
-                                    calibrated_mt[s][lvl][obs][syst]["Down"] = {}
-                                #uncalibrated_mt[s][lvl][obs][syst]["Down"] = {moment:{}}
-                                #calibrated_mt[s][lvl][obs][syst]["Down"] = {moment:{}}
+                                    calibrated_mt[s][lvl][obs][syst] = {"Up":{}}
+                                #uncalibrated_mt[s][lvl][obs][syst] = {"Up":{moment:{}}}
+                                #calibrated_mt[s][lvl][obs][syst] = {"Up":{moment:{}}}
+                                
+                                if sys not in oneSidedSysts:
+                                    uncalibrated_mt[s][lvl][obs][syst]["Down"] = {}
+                                    if not args.nocalibration:
+                                        calibrated_mt[s][lvl][obs][syst]["Down"] = {}
+                                    #uncalibrated_mt[s][lvl][obs][syst]["Down"] = {moment:{}}
+                                    #calibrated_mt[s][lvl][obs][syst]["Down"] = {moment:{}}
 
-                        uncalibrated_mt[s][lvl][obs][syst]["Up"][moment] = {} 
-                        if not args.nocalibration:
-                            calibrated_mt[s][lvl][obs][syst]["Up"][moment] = {} 
-                        if sys not in oneSidedSysts:
-                            uncalibrated_mt[s][lvl][obs][syst]["Down"][moment] = {} 
+                            uncalibrated_mt[s][lvl][obs][syst]["Up"][moment] = {} 
                             if not args.nocalibration:
-                                calibrated_mt[s][lvl][obs][syst]["Down"][moment] = {} 
+                                calibrated_mt[s][lvl][obs][syst]["Up"][moment] = {} 
+                            if sys not in oneSidedSysts:
+                                uncalibrated_mt[s][lvl][obs][syst]["Down"][moment] = {} 
+                                if not args.nocalibration:
+                                    calibrated_mt[s][lvl][obs][syst]["Down"][moment] = {} 
 
-                       
-                        nomEntry = len(moments[s][lvl][obs][syst]["Up"][moment]) // 2
+                           
+                            nomEntry = len(moments[s][lvl][obs][syst]["Up"][moment]) // 2
 #                        print "Now on %s %s %s" % (lvl,syst,moment)
-                        
-                        try:
-                            #mtUp = massFromMoment(fitLines[s][lvl][obs][syst]["Up"][moment], moments[s][lvl][obs][syst]["Up"][moment][nomEntry] )
-                            #mtUp = massFromMoment(fitLines[s][lvl][obs]['nominal'][moment], moments[s][lvl][obs][syst]['Up'][moment][nomEntry] )
-                            # Fit nominal moment to systematic fit line
-                            mtUp = massFromMoment(fitLines[s][lvl][obs][syst]["Up"][moment], moments[s][lvl][obs]['nominal'][moment][nomEntry] )
-                        except ZeroDivisionError:
-                            # Skip
-                            continue
-
-                        except Exception as e:
-                            pprint(e)
-                            print "s =", s
-                            print "lvl =", lvl
-                            print "obs =", obs
-                            print "syst =", syst
-                            print "moment =", moment
-                            print "nomEntry =", nomEntry
-                            sys.exit()
-                        
-                        uncalibrated_mt[s][lvl][obs][syst]["Up"][moment]["mass"] = mtUp
-                        uncalibrated_mt[s][lvl][obs][syst]["Up"][moment]["impact"] = mtUp - nom_mt
-
-                        if not args.nocalibration:
-                            calibrated_mtUp = calib[s][lvl][obs][moment].calibrate(mtUp)
-                            calibrated_mt[s][lvl][obs][syst]["Up"][moment]["mass"] = calibrated_mtUp
-                            calibrated_mt[s][lvl][obs][syst]["Up"][moment]["impact"] = calibrated_mtUp - calibrated_nom_mt
-                        
-                        if syst not in oneSidedSysts:
-                            #mtDown = massFromMoment(fitLines[s][lvl][obs][syst]["Down"][moment], moments[s][lvl][obs][syst]["Down"][moment][nomEntry])
                             
-                            mtDown = massFromMoment(fitLines[s][lvl][obs][syst]["Down"][moment], moments[s][lvl][obs]['nominal'][moment][nomEntry])
-                            #mtDown = massFromMoment(fitLines[s][lvl][obs]['nominal'][moment], moments[s][lvl][obs][syst]['Down'][moment][nomEntry] )
-                            uncalibrated_mt[s][lvl][obs][syst]["Down"][moment]["mass"] = mtDown
-                            uncalibrated_mt[s][lvl][obs][syst]["Down"][moment]["impact"] = nom_mt - mtDown
+                            try:
+                                #mtUp = massFromMoment(fitLines[s][lvl][obs][syst]["Up"][moment], moments[s][lvl][obs][syst]["Up"][moment][nomEntry] )
+                                #mtUp = massFromMoment(fitLines[s][lvl][obs]['nominal'][moment], moments[s][lvl][obs][syst]['Up'][moment][nomEntry] )
+                                # Fit nominal moment to systematic fit line
+                                mtUp = massFromMoment(fitLines[s][lvl][obs][syst]["Up"][moment], moments[s][lvl][obs]['nominal'][moment][nomEntry] )
+                            except ZeroDivisionError:
+                                # Skip
+                                continue
+
+                            except Exception as e:
+                                pprint(e)
+                                print "s =", s
+                                print "lvl =", lvl
+                                print "obs =", obs
+                                print "syst =", syst
+                                print "moment =", moment
+                                print "nomEntry =", nomEntry
+                                sys.exit()
+                            
+                            uncalibrated_mt[s][lvl][obs][syst]["Up"][moment]["mass"] = mtUp
+                            uncalibrated_mt[s][lvl][obs][syst]["Up"][moment]["impact"] = mtUp - nom_mt
 
                             if not args.nocalibration:
-                                calibrated_mtDown = calib[s][lvl][obs][moment].calibrate(mtDown)
-                                calibrated_mt[s][lvl][obs][syst]["Down"][moment]["mass"] = calibrated_mtDown
-                                calibrated_mt[s][lvl][obs][syst]["Down"][moment]["impact"] = calibrated_nom_mt - calibrated_mtDown
+                                calibrated_mtUp = calib[s][lvl][obs][moment].calibrate(mtUp)
+                                calibrated_mt[s][lvl][obs][syst]["Up"][moment]["mass"] = calibrated_mtUp
+                                calibrated_mt[s][lvl][obs][syst]["Up"][moment]["impact"] = calibrated_mtUp - calibrated_nom_mt
+                            
+                            if syst not in oneSidedSysts:
+                                #mtDown = massFromMoment(fitLines[s][lvl][obs][syst]["Down"][moment], moments[s][lvl][obs][syst]["Down"][moment][nomEntry])
+                                
+                                mtDown = massFromMoment(fitLines[s][lvl][obs][syst]["Down"][moment], moments[s][lvl][obs]['nominal'][moment][nomEntry])
+                                #mtDown = massFromMoment(fitLines[s][lvl][obs]['nominal'][moment], moments[s][lvl][obs][syst]['Down'][moment][nomEntry] )
+                                uncalibrated_mt[s][lvl][obs][syst]["Down"][moment]["mass"] = mtDown
+                                uncalibrated_mt[s][lvl][obs][syst]["Down"][moment]["impact"] = nom_mt - mtDown
+
+                                if not args.nocalibration:
+                                    calibrated_mtDown = calib[s][lvl][obs][moment].calibrate(mtDown)
+                                    calibrated_mt[s][lvl][obs][syst]["Down"][moment]["mass"] = calibrated_mtDown
+                                    calibrated_mt[s][lvl][obs][syst]["Down"][moment]["impact"] = calibrated_nom_mt - calibrated_mtDown
+                            
+
+        # Write moment json file
+        for s in ["tttW"]:
+            for moment in ["m1","m2","m3","m4"]:
+                for obs in observables:
+                    if args.nocalibration:
+                        nominal_mt = uncalibrated_mt['tttW']['morph'][obs]['nominal'][moment]['mass']
+                        stat_err = uncalibrated_mt['tttW']['morph'][obs]['nominal'][moment]['error']
+                    else:
+                        nominal_mt = calibrated_mt['tttW']['morph'][obs]['nominal'][moment]['mass']
+                        stat_err = calibrated_mt['tttW']['morph'][obs]['nominal'][moment]['error']
+
+                    nominal_mt *= 10.
+                    stat_err *= 10.
+
+                    jsondata = {"POIs":[ {"fit":[nominal_mt - stat_err , nominal_mt, nominal_mt + stat_err], "name":"MT", "stat":[nominal_mt - stat_err , nominal_mt, nominal_mt + stat_err]} ] }
+                    jsondata["params"] = []
+                    for syst in systematics:
+                        #if syst == "DS": continue
+                        if args.nocalibration:
+                            mtUp = uncalibrated_mt['tttW']['morph'][obs][syst]["Up"][moment]["mass"]
+                        else:
+                            mtUp = calibrated_mt['tttW']['morph'][obs][syst]["Up"][moment]["mass"]
+                        if syst not in oneSidedSysts:
+                            if args.nocalibration:
+                                mtDown = uncalibrated_mt['tttW']['morph'][obs][syst]["Down"][moment]["mass"]
+                            else:
+                                mtDown = calibrated_mt['tttW']['morph'][obs][syst]["Down"][moment]["mass"]
+                        else:
+                            mtDown = nominal_mt / 10.
                         
+                        mtDown *= 10.
+                        mtUp *= 10.
 
-    # Write moment json file
-    for moment in ["m1","m2","m3","m4"]:
-        if args.nocalibration:
-            nominal_mt = uncalibrated_mt['tt']['morph']['rec_ptll']['nominal'][moment]['mass']
-            stat_err = uncalibrated_mt['tt']['morph']['rec_ptll']['nominal'][moment]['error']
-        else:
-            nominal_mt = calibrated_mt['tt']['morph']['rec_ptll']['nominal'][moment]['mass']
-            stat_err = calibrated_mt['tt']['morph']['rec_ptll']['nominal'][moment]['error']
-
-        nominal_mt *= 10.
-        stat_err *= 10.
-
-        jsondata = {"POIs":[ {"fit":[nominal_mt - stat_err , nominal_mt, nominal_mt + stat_err], "name":"MT"} ] }
-        jsondata["params"] = []
-        for syst in systematics:
-            if syst == "DS": continue
-            if args.nocalibration:
-                mtUp = uncalibrated_mt['tt']['morph']['rec_ptll'][syst]["Up"][moment]["mass"]
-            else:
-                mtUp = calibrated_mt['tt']['morph']['rec_ptll'][syst]["Up"][moment]["mass"]
-            if syst not in oneSidedSysts:
-                if args.nocalibration:
-                    mtDown = uncalibrated_mt['tt']['morph']['rec_ptll'][syst]["Down"][moment]["mass"]
-                else:
-                    mtDown = calibrated_mt['tt']['morph']['rec_ptll'][syst]["Down"][moment]["mass"]
-            else:
-                mtDown = nominal_mt / 10.
-            
-            mtDown *= 10.
-            mtUp *= 10.
-
-            info = {}
-            info["MT"] = [mtDown,nominal_mt,mtUp]
-            info["impact_MT"] = max(abs(nominal_mt - mtDown), abs(nominal_mt - mtUp))
-            info["name"] = syst
-            info["groups"] = []
-            info["type"] = "Gaussian"
-            info["fit"] = [0.,0.,0.]
-            info["prefit"] = [-1., 0., 1.]
+                        info = {}
+                        info["MT"] = [mtDown,nominal_mt,mtUp]
+                        info["impact_MT"] = max(abs(nominal_mt - mtDown), abs(nominal_mt - mtUp))
+                        info["name"] = syst
+                        info["groups"] = []
+                        info["type"] = "Gaussian"
+                        info["fit"] = [0.,0.,0.]
+                        info["prefit"] = [-1., 0., 1.]
 
 
-            jsondata["params"].append(info)
+                        jsondata["params"].append(info)
 
-        outF = "%s/%s_%s_%s" % (args.outDir, args.obs, moment,args.json)
-        with open(outF, "w") as f:
-            json.dump(jsondata, f, indent=4, separators=(',', ': '))
+                    outF = "%s/%s/%s_%s_%s_%s" % (args.outDir, obs, s, obs, moment,args.json)
+                    with open(outF, "w") as f:
+                        json.dump(jsondata, f, indent=4, separators=(',', ': '))
 
-        print "Impact data on moment %s written to %s" % (moment,outF)
+                    print "Impact data on moment %s written to %s" % (moment,outF)
 
 if __name__ == "__main__":
     sys.exit(main())

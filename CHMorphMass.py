@@ -34,14 +34,14 @@ systematics = {\
     "CRerdON":"shape", \
     "CRGluon":"shape", \
     "CRQCD":"shape", \
-#    "DS":"shape", \
+    "DS":"shape", \
 #    "amcanlo":"shape", \
 #    "madgraph":"shape", \
 #    "herwigpp":"shape", \
     }
 
 experimentalSysts = ["pileup", "Lumi", "BTagSF", "EleIDEff", "EleRecoEff", "EleScale", "EleSmear", "MuIDEff", "MuIsoEff", "MuTrackEff", "MuScale", "TrigEff", "JEC", "JER",'BkgNorm' ]
-theorySysts = ["toppt", "Q2", "isr", "fsr", "Pdf", "hdamp", "UE", "CRerdON", "CRGluon", "CRQCD", "amcanlo", "madgraph", "herwigpp"] #, "DS" ]
+theorySysts = ["toppt", "Q2", "isr", "fsr", "Pdf", "hdamp", "UE", "CRerdON", "CRGluon", "CRQCD", "amcanlo", "madgraph", "herwigpp", "DS" ]
 
 parser = ArgumentParser()
 parser.add_argument("-i", "--inF", default="mtTemplatesForCH.root", help="input template root file")
@@ -117,7 +117,11 @@ ttOnlySysts = ['toppt','hdamp','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgr
 tWOnlySysts = ['DS']
 
 #signals = ['tt','tW']
-signals = ['tt']
+signals = ['tttW']
+
+if len(signals) == 1 and signals[0] == "tt":
+    print "TTbar only signal. Removing DS systematic"
+    theorySysts.remove("DS")
 backgrounds = ['DY','TTV','Diboson','ST_bkgd'] #,'WJets']
 cats = [(0,"%s_%s" %(args.reco,args.obs)), \
 #        (1,'rec_ptpos'), \

@@ -2,12 +2,14 @@
 import sys
 from ROOT import TH2D, TCanvas, TFile 
 from argparse import ArgumentParser
+from array import array
 
 obsTitle = {"ptll":"p_{T}(ll)", "ptpos":"p_{T}(l^{+})", "Epos":"E(l^{+})", "ptp_ptm":"p_{T}(l^{+}) + p_{T}(l^{-})", "Ep_Em":"E(l^{+}) + E(l^{-})", "Mll":"M(ll)"}
+signalTitle = {"tt":"t#bar{t}", "tW":"tW"}
 
 parser = ArgumentParser()
 parser.add_argument("-i", dest="inF", default="mtTemplatesForCH.root", help="Input debug root file from CombineHarvester with morphed templates")
-parser.add_argument("--sig", default="tt", choices=["tt","tW"], help="signal sample")
+#parser.add_argument("--sig", default="tt", choices=["tt","tW"], help="signal sample")
 parser.add_argument("-s", "--sys", default="", help="systematic")
 parser.add_argument("--reco", default="rec", choices=["rec","gen"], help="reconstruction level")
 parser.add_argument("--obs", dest="obs", default="ptll", help="Kinematic observable")
@@ -28,7 +30,9 @@ deltaM = 1
 masses = range(1665, 1786, deltaM)
 #masses = range(1665, 1795, 10)
 #signal = ["tt","tW"]
-signal = ["tt"]
+massBins = [m/10. for m in masses]
+
+signal = ["tt","tW"]
 #systematics = ["nominal", "pileupUp", "pileupDown", "Q2Up", "Q2Down", "PdfUp", "PdfDown"]
 systematics = ["nominal"]
 recoObs = "%s_%s" % (args.reco, args.obs)
@@ -42,7 +46,15 @@ for s in signal:
             morph[m] = f.Get("%s/%s%d%s" % (recoObs,s,m,"" if syst=="nominal" else "_" + syst))
             morph[m].SetDirectory(0)
 
-        h[s][syst] = TH2D("%s%s_morph_points" % (s,"" if syst=="nominal" else "_" + syst), "Morphed %s%s Templates" % (obsTitle[args.obs],"" if syst == "nominal" else "_" + syst), len(masses), (masses[0] - 0.5*deltaM) / 10.0, (masses[-1] + 0.5*deltaM)/10.0, morph[masses[0]].GetNbinsX(), morph[masses[0]].GetXaxis().GetXmin(), morph[masses[0]].GetXaxis().GetXmax())
+        obsBins = morph[masses[0]].GetXaxis().GetXbins()
+        obsBins = [p for p in obsBins]
+        if len(obsBins) < 1:
+            # Uniform binning
+            obsBins = []
+            for _b in xrange(1, morph[masses[0]].GetNbinsX()+2):
+                obsBins.append(morph[masses[0]].GetBinLowEdge(_b))
+
+        h[s][syst] = TH2D("%s%s_morph_points" % (s,"" if syst=="nominal" else "_" + syst), "%s Morphed %s%s Templates" % (signalTitle[s], obsTitle[args.obs],"" if syst == "nominal" else "_" + syst), len(massBins)-1, array('d',massBins), morph[masses[0]].GetNbinsX(), array('d', obsBins) )
         h[s][syst].GetXaxis().SetTitle("m_{t} [GeV]")
         h[s][syst].GetYaxis().SetTitle("%s [GeV]" % obsTitle[args.obs])
         h[s][syst].GetZaxis().SetTitle("Events")
@@ -54,6 +66,7 @@ for s in signal:
         for m in masses:
             for b in xrange(1, morph[m].GetNbinsX() + 1):
                 h[s][syst].Fill(m / 10.0, morph[m].GetBinCenter(b), morph[m].GetBinContent(b))
+
 
 outF = TFile.Open(args.outF, "recreate")
 for s in signal:

@@ -12,8 +12,9 @@ parser = ArgumentParser()
 parser.add_argument("--old", default="newMorphRates_bin10_cut220_mtTemplatesForCH.root", help="old template file")
 parser.add_argument("--new", default="secondtry_morphRates_bin10_cut220_mtTemplatesForCH.root", help="new template file")
 parser.add_argument("-a", "--useActual", action="store_true", default=False, help="plot actual templates instead of morphed")
+parser.add_argument("--noerrors", action="store_true", default=False, help="don't draw error bars")
 parser.add_argument("-s", "--syst", default="EleScale", help="systematic to plot")
-parser.add_argument("-o", "--outDir", default="compOldNewHists", help="output directory")
+parser.add_argument("-o", "--outDir", default="compOldNewTemplates", help="output directory")
 
 args = parser.parse_args()
 if args.outDir[-1] == "/": args.outDir = args.outDir[:-1]
@@ -38,10 +39,14 @@ newF = TFile.Open(args.new, "read")
 
 for m in masses:
     print "Now on mass %d" % m
-    nom = oldF.Get("%s/ttactual%d" % (recoObs,m)).Clone()
-    nom.SetDirectory(0)
-    nom.SetLineWidth(2)
+    oldNom = oldF.Get("%s/ttactual%d" % (recoObs,m)).Clone()
+    oldNom.SetDirectory(0)
+    oldNom.SetLineWidth(2)
 
+    newNom = newF.Get("%s/ttactual%d" % (recoObs,m)).Clone()
+    newNom.SetDirectory(0)
+    newNom.SetLineWidth(2)
+    
     oldUp = oldF.Get("%s/%s%d_%sUp" % (recoObs, signal, m, args.syst)).Clone()
     oldDn = oldF.Get("%s/%s%d_%sDown" % (recoObs, signal, m, args.syst)).Clone()
 
@@ -56,17 +61,17 @@ for m in masses:
 
     resOldUp = oldUp.Clone()
     resOldUp.SetDirectory(0)
-    resOldUp.Add(nom, -1)
+    resOldUp.Add(oldNom, -1)
     ratioOldUp = oldUp.Clone()
     ratioOldUp.SetDirectory(0)
-    ratioOldUp.Divide(nom)
+    ratioOldUp.Divide(oldNom)
 
     resOldDn = oldDn.Clone()
     resOldDn.SetDirectory(0)
-    resOldDn.Add(nom, -1)
+    resOldDn.Add(oldNom, -1)
     ratioOldDn = oldDn.Clone()
     ratioOldDn.SetDirectory(0)
-    ratioOldDn.Divide(nom)
+    ratioOldDn.Divide(oldNom)
 
 
     maxOldRes = -100
@@ -96,20 +101,20 @@ for m in masses:
 
     resNewUp = newUp.Clone()
     resNewUp.SetDirectory(0)
-    resNewUp.Add(nom, -1)
+    resNewUp.Add(newNom, -1)
     ratioNewUp = newUp.Clone()
     ratioNewUp.SetDirectory(0)
-    ratioNewUp.Divide(nom)
+    ratioNewUp.Divide(newNom)
 
     resNewDn = newDn.Clone()
     resNewDn.SetDirectory(0)
-    resNewDn.Add(nom, -1)
+    resNewDn.Add(newNom, -1)
     ratioNewDn = newDn.Clone()
     ratioNewDn.SetDirectory(0)
-    ratioNewDn.Divide(nom)
+    ratioNewDn.Divide(newNom)
 
-    resLine = TLine(nom.GetXaxis().GetBinLowEdge(1), 0., nom.GetXaxis().GetBinUpEdge(nom.GetNbinsX()), 0.)
-    ratioLine = TLine(nom.GetXaxis().GetBinLowEdge(1), 1., nom.GetXaxis().GetBinUpEdge(nom.GetNbinsX()), 1.)
+    resLine = TLine(newNom.GetXaxis().GetBinLowEdge(1), 0., newNom.GetXaxis().GetBinUpEdge(newNom.GetNbinsX()), 0.)
+    ratioLine = TLine(newNom.GetXaxis().GetBinLowEdge(1), 1., newNom.GetXaxis().GetBinUpEdge(newNom.GetNbinsX()), 1.)
 
     resLine.SetLineWidth(2)
     ratioLine.SetLineWidth(2)
@@ -128,43 +133,44 @@ for m in masses:
     paddingNewRatio = 0.05 * abs(maxNewRatio - minNewRatio)
 
 
-    maxOld = max(oldUp.GetMaximum(), max(nom.GetMaximum(), oldDn.GetMaximum()))
-    maxNew = max(newUp.GetMaximum(), max(nom.GetMaximum(), newDn.GetMaximum()))
+    maxOld = max(oldUp.GetMaximum(), max(oldNom.GetMaximum(), oldDn.GetMaximum()))
+    maxNew = max(newUp.GetMaximum(), max(newNom.GetMaximum(), newDn.GetMaximum()))
 
     l = TLegend(0.7, 0.7, 0.88, 0.88)
     l.SetBorderSize(0)
     l.AddEntry(oldUp, "%s Up" % args.syst)
-    l.AddEntry(nom, "nominal")
+    l.AddEntry(oldNom, "nominal")
     l.AddEntry(oldDn, "%s Dn" % args.syst)
 
     c.cd()
+    c.ResetDrawn()
     c.Draw()
     pad1.Draw()
     pad2.Draw()
     pad3.Draw()
 
 
-### Old syst ###
+    ### Old syst ###
     pad1.cd()
     oldUp.SetTitle("Old %s  m_{t} = %.1f GeV  %s" % (args.syst, m/10., "actual" if args.useActual else "morphed"))
     oldUp.GetYaxis().SetRangeUser(0, 1.05*maxOld) 
     oldUp.Draw("hist")
-    nom.Draw("hist same")
+    oldNom.Draw("hist same")
     oldDn.Draw("hist same")
     l.Draw("same")
 
     pad2.cd()
     resOldUp.GetYaxis().SetRangeUser(minOldRes - paddingOldRes, maxOldRes + paddingOldRes)
     resOldUp.SetTitle("Residual")
-    resOldUp.Draw("hist")
-    resOldDn.Draw("hist same")
+    resOldUp.Draw("hist%s" % ("" if args.noerrors else " e1"))
+    resOldDn.Draw("hist%s same" % ("" if args.noerrors else " e1"))
     resLine.Draw("same")
 
     pad3.cd()
     ratioOldUp.GetYaxis().SetRangeUser(minOldRatio - paddingOldRatio, maxOldRatio + paddingOldRatio)
     ratioOldUp.SetTitle("Ratio")
-    ratioOldUp.Draw("hist")
-    ratioOldDn.Draw("hist same")
+    ratioOldUp.Draw("hist%s" % ("" if args.noerrors else " e1"))
+    ratioOldDn.Draw("hist%s same" % ("" if args.noerrors else " e1"))
     ratioLine.Draw("same")
 
     c.SaveAs("%s/old%s_mt%d_%s.png" % (args.outDir, args.syst, m, "actual" if args.useActual else "morphed"))
@@ -177,27 +183,27 @@ for m in masses:
     pad3.Draw()
 
 
-### New syst ###
+    ### New syst ###
     pad1.cd()
     newUp.SetTitle("New %s  m_{t} = %.1f GeV  %s" % (args.syst, m/10., "actual" if args.useActual else "morphed"))
     newUp.GetYaxis().SetRangeUser(0, 1.05*maxNew)
     newUp.Draw("hist")
-    nom.Draw("hist same")
+    newNom.Draw("hist same")
     newDn.Draw("hist same")
     l.Draw("same")
 
     pad2.cd()
     resNewUp.GetYaxis().SetRangeUser(minNewRes - paddingNewRes, maxNewRes + paddingNewRes)
     resNewUp.SetTitle("Residual")
-    resNewUp.Draw("hist")
-    resNewDn.Draw("hist same")
+    resNewUp.Draw("hist%s" % ("" if args.noerrors else " e1"))
+    resNewDn.Draw("hist%s same" % ("" if args.noerrors else " e1"))
     resLine.Draw("same")
 
     pad3.cd()
     ratioNewUp.GetYaxis().SetRangeUser(minNewRatio - paddingNewRatio, maxNewRatio + paddingNewRatio)
     ratioNewUp.SetTitle("Ratio")
-    ratioNewUp.Draw("hist")
-    ratioNewDn.Draw("hist same")
+    ratioNewUp.Draw("hist%s" % ("" if args.noerrors else " e1"))
+    ratioNewDn.Draw("hist%s same" % ("" if args.noerrors else " e1"))
     ratioLine.Draw("same")
 
     c.SaveAs("%s/new%s_mt%d_%s.png" % (args.outDir, args.syst, m, "actual" if args.useActual else "morphed"))
@@ -210,7 +216,7 @@ for m in masses:
     pad3.Draw()
 
 
-### Comparison ###
+    ### Comparison ###
     pad1.cd()
 
     newUp.SetLineColor(kOrange)
@@ -221,37 +227,39 @@ for m in masses:
     resNewDn.SetLineColor(kCyan)
     ratioNewDn.SetLineColor(kCyan)
 
-
+    oldNom.SetLineStyle(7)
     l = TLegend(0.7, 0.6, 0.88, 0.88)
     l.SetBorderSize(0)
     l.AddEntry(oldUp, "Old %s Up" % args.syst)
     l.AddEntry(newUp, "New %s Up" % args.syst) 
-    l.AddEntry(nom, "nominal")
+    l.AddEntry(oldNom, "Old nominal")
+    l.AddEntry(newNom, "New nominal")
     l.AddEntry(oldDn, "Old %s Dn" % args.syst)
     l.AddEntry(newDn, "New %s Dn" % args.syst)
 
     oldUp.SetTitle("Old and New %s  m_{t} = %.1f GeV  %s" % (args.syst, m/10., "actual" if args.useActual else "morphed"))
     oldUp.Draw("hist")
     newUp.Draw("hist same")
-    nom.Draw("hist same")
+    oldNom.Draw("hist same")
+    newNom.Draw("hist same")
     oldDn.Draw("hist same")
     newDn.Draw("hist same")
     l.Draw("same")
 
     pad2.cd()
     resOldUp.GetYaxis().SetRangeUser(min(minOldRes, minNewRes) - max(paddingOldRes, paddingNewRes), max(maxOldRes, maxNewRes) + max(paddingOldRes, paddingNewRes))
-    resOldUp.Draw("hist")
-    resNewUp.Draw("hist same")
-    resOldDn.Draw("hist same")
-    resNewDn.Draw("hist same")
+    resOldUp.Draw("hist%s" % ("" if args.noerrors else " e1"))
+    resNewUp.Draw("hist%s same" % ("" if args.noerrors else " e1"))
+    resOldDn.Draw("hist%s same" % ("" if args.noerrors else " e1"))
+    resNewDn.Draw("hist%s same" % ("" if args.noerrors else " e1"))
     resLine.Draw("same")
 
     pad3.cd()
     ratioOldUp.GetYaxis().SetRangeUser(min(minOldRatio, minNewRatio) - max(paddingOldRatio, paddingNewRatio), max(maxOldRatio, maxNewRatio) + max(paddingOldRatio, paddingNewRatio))
-    ratioOldUp.Draw("hist")
-    ratioNewUp.Draw("hist same")
-    ratioOldDn.Draw("hist same")
-    ratioNewDn.Draw("hist same")
+    ratioOldUp.Draw("hist%s" % ("" if args.noerrors else " e1"))
+    ratioNewUp.Draw("hist%s same" % ("" if args.noerrors else " e1"))
+    ratioOldDn.Draw("hist%s same" % ("" if args.noerrors else " e1"))
+    ratioNewDn.Draw("hist%s same" % ("" if args.noerrors else " e1"))
     ratioLine.Draw("same")
 
     c.SaveAs("%s/comparison_old_new_%s_mt%d_%s.png" % (args.outDir, args.syst, m, "actual" if args.useActual else "morphed"))
@@ -278,11 +286,11 @@ for m in masses:
     ratioNewOldDn.SetLineColor(kBlue)
 
     compPad1.cd()
-    ratioNewOldUp.Draw("hist")
+    ratioNewOldUp.Draw("hist%s" % ("" if args.noerrors else " e1"))
     ratioLine.Draw("same")
 
     compPad2.cd()
-    ratioNewOldDn.Draw("hist")
+    ratioNewOldDn.Draw("hist%s" % ("" if args.noerrors else " e1"))
     ratioLine.Draw("same")
     canvasCompare.SaveAs("%s/ratio_new_old_%s_mt%d_%s.png" % (args.outDir, args.syst, m, "actual" if args.useActual else "morphed"))
 

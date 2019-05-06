@@ -38,11 +38,16 @@ parameterArgs="--redefineSignalPOIs MT,r --floatOtherPOIs 1 --expectSignal 1 --s
 #toyArg="-t -1 --seed $seed"
 toyArg="-t -1"
 
-cardRoot="${card}.root"
+cardRoot="../${card}.root"
 
 echo "text2workspace.py ${card}.txt"
 text2workspace.py ${card}.txt
 
+echo "mkdir -p ${outputName}"
+mkdir -p ${outputName}
+
+echo "pushd ${outputName}"
+pushd ${outputName}
 
 # Full uncertainty
 echo "combine -M MultiDimFit -m 125 ${cardRoot} -P MT --robustFit 1 --algo grid --points 100 $parameterArgs ${toyArg} -n nominal"
@@ -74,10 +79,10 @@ else
     #echo "./plot1DScan.py higgsCombinenominal.MultiDimFit.mH125.root --POI ${mtScaled} --output ${outputName}"
     #./plot1DScan.py higgsCombinenominal.MultiDimFit.mH125.root --POI ${mtScaled} --output ${outputName}
 
-    echo "./plot1DScan.py higgsCombinenominal.MultiDimFit.mH125.root --POI ${mtScaled} --others 'higgsCombinestat.MultiDimFit.mH125.root:Freeze all:2' --breakdown syst,stat --output ${outputName}"
-    ./plot1DScan.py higgsCombinenominal.MultiDimFit.mH125.root --POI ${mtScaled} --others 'higgsCombinestat.MultiDimFit.mH125.root:Freeze all:2' --breakdown syst,stat --output ${outputName}
+    echo "../plot1DScan.py higgsCombinenominal.MultiDimFit.mH125.root --POI ${mtScaled} --others 'higgsCombinestat.MultiDimFit.mH125.root:Freeze all:2' --breakdown syst,stat --output ${outputName}"
+    ../plot1DScan.py higgsCombinenominal.MultiDimFit.mH125.root --POI ${mtScaled} --others 'higgsCombinestat.MultiDimFit.mH125.root:Freeze all:2' --breakdown syst,stat --output ${outputName}
 
     #plot1DScan.py higgsCombinenominal.MultiDimFit.mH125.root --others 'higgsCombinetheory.MultiDimFit.mH125.root:Freeze theory:4' 'higgsCombineexp.MultiDimFit.mH125.root:Freeze exp:3' 'higgsCombinestat.MultiDimFit.mH125.root:Freeze systs:2' --breakdown theory,exp,syst,stat --POI MT/10
 fi
 
-
+popd

@@ -13,11 +13,12 @@ import gzip
 from copy import deepcopy
 
 gROOT.SetBatch(True)
+allSystematics = ["pileup", "Lumi", "EleIDEff", "EleRecoEff", "EleScale", "EleSmear", "MuIDEff", "MuIsoEff", "MuTrackEff", "MuScale", "TrigEff", "BTagSF", "JEC", "JER", "toppt", "Q2", "Pdf", "isr", "fsr", 'hdamp','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp','DS',"MEscale1","MEscale2","MEscale3","MEscale4","MEscale5","MEscale6"]
 
-allSystematics = ["pileup", "Lumi", "EleIDEff", "EleRecoEff", "EleScale", "EleSmear", "MuIDEff", "MuIsoEff", "MuTrackEff", "MuScale", "TrigEff", "BTagSF", "JEC", "JER", "toppt", "Q2", "Pdf", "isr", "fsr", 'hdamp','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp','DS']
-
-_observables = ['ptll', 'Mll', 'ptpos', 'Epos', 'ptp_ptm', 'Ep_Em'] 
-obsTitle = {"ptll":"p_{T}(ll)", "ptpos":"p_{T}(l^{+})", "Epos":"E(l^{+})", "ptp_ptm":"p_{T}(l^{+}) + p_{T}(l^{-})", "Ep_Em":"E(l^{+}) + E(l^{-})", "Mll":"M(ll)"}
+systematicsToScale = {"TTbar":["Q2","MEscale1","MEscale2","MEscale3","MEscale4","MEscale5","MEscale6"],
+                      "ST_tW":["Q2"]}
+_observables = ['ptll', 'Mll', 'ptpos', 'Epos', 'ptp_ptm', 'Ep_Em', "leadLepPt", "leadJetPt"] 
+obsTitle = {"ptll":"p_{T}(ll)", "ptpos":"p_{T}(l^{+})", "Epos":"E(l^{+})", "ptp_ptm":"p_{T}(l^{+}) + p_{T}(l^{-})", "Ep_Em":"E(l^{+}) + E(l^{-})", "Mll":"M(ll)", "leadLepPt":"Leading Lepton p_{T}", "leadJetPt":"Leading Jet p_{T}"}
 signal = ["TTbar", "ST_tW"]
 background = ["DY", "TTV", "WJets", "Diboson", "ST_bkgd"]
 systematics = {"nominal":"hists", \
@@ -77,13 +78,32 @@ systematics = {"nominal":"hists", \
                "madgraphDown":"hists", \
                "herwigppUp":"histsherwigpp", \
                "herwigppDown":"hists", \
+#               "MEscale1Up":"histsMEscale1", \
+#               "MEscale1Down":"hists", \
+#               "MEscale2Up":"histsMEscale2", \
+#               "MEscale2Down":"hists", \
+#               "MEscale3Up":"histsMEscale3", \
+#               "MEscale3Down":"hists", \
+#               "MEscale4Up":"histsMEscale4", \
+#               "MEscale4Down":"hists", \
+#               "MEscale5Up":"histsMEscale5", \
+#               "MEscale5Down":"hists", \
+#               "MEscale6Up":"histsMEscale6", \
+#               "MEscale6Down":"hists", \
                }
 
-separateSystSamples = ['isr','fsr','DS','hdamp','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp']
-ttOnlySysts = ['toppt','hdamp','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp']
+separateSystSamples = {
+    "TTbar":['isr','fsr','hdamp','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp'],
+    "ST_tW":['isr','fsr','hdamp','DS','hdamp', 'Q2']
+}
+ttOnlySysts = ['toppt','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp',"MEscale1","MEscale2","MEscale3","MEscale4","MEscale5","MEscale6"]
 tWOnlySysts = ['DS']
 
 PU_mt1725only = False 
+
+def ttxsec(mt, xsecref = 803, a1 = -0.745047, a2 = 0.127417):
+    mtref = 172.5
+    return xsecref * (mtref/mt)**4 * (1. + a1 * (mt - mtref)/mtref + a2 * ( (mt - mtref)/mtref )**2)
 
 
 def clamp(val, minV, maxV):
@@ -142,6 +162,9 @@ def morphTemplates(templates, morph_masses, name, title, precision=1, systematic
     binMorphG = {}
     rates = {}
     normalized = {}
+    
+    signalType = name[-2:]
+    
     actual_masses = sorted(templates.keys())
     if verbosity > 0: print "Morphing  %s  %s" % (name,systematic[1:])
     obs = name[4:-3]
@@ -185,7 +208,7 @@ def morphTemplates(templates, morph_masses, name, title, precision=1, systematic
     for b in xrange(1, morph[morph_masses[0]].GetNbinsX()+1):
         binMorphG[b] = TGraphErrors(len(morph_masses), array('d', [m/decimalScaling for m in morph_masses]), array('d', [morph[m].GetBinContent(b) for m in morph_masses]), array('d', [0.] * len(morph_masses)), array('d', [morph[m].GetBinError(b) for m in morph_masses]))
         binMorphG[b].SetName("%s%smorphed_bin_%d" % (name,"" if systematic == "" else systematic+"_",b))
-        binMorphG[b].SetTitle("Morphed Bin %d" % b)
+        binMorphG[b].SetTitle("%s Morphed Bin %d" % ("t#bar{t}" if signalType == "tt" else signalType, b) )
         binMorphG[b].GetXaxis().SetTitle("m_{t} [GeV]")
         binMorphG[b].GetYaxis().SetTitle("Entries")
         binMorphG[b].GetYaxis().SetTitleOffset(1.3)
@@ -249,26 +272,49 @@ def morphTemplates2D(templates, morph_masses, name, title, systematic="", variab
 
 
 
-def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massMax, deltaMT, rateScaling, obsList, recoLvls, interp, outF, bins, makePlots, plotDir, debugOut, includeGraphs, morphRates, verbosity=1): 
+def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massMax, deltaMT, rateScaling, observables, recoLvls, interp, outF, bins, makePlots, plotDir, debugOut, includeGraphs, morphRates, useMorphFile, extMorphFile, scaleToNominal, verbosity=1): 
     binning = None
     if bins != "":
         binning = eval(bins)
         print "Using binning:", binning
     # If includedSysts is not an empty string, remove all other systs from systematics dictionary
-    if includedSysts != "":
+    if "none" in includedSysts or "None" in includedSysts:
+        # No systematics
+        #systematics = {"nominal":"hists"}
+        systsToRemove = deepcopy(allSystematics)
+        for removeSys in systsToRemove:
+            systematics.pop(removeSys+"Up")
+            systematics.pop(removeSys+"Down")
+            
+        print "No systematics included!"
+    elif includedSysts != "":
         systsToRemove = deepcopy(allSystematics)
         for incSys in includedSysts:
             systsToRemove.remove(incSys)
 
         for removeSys in systsToRemove:
-           systematics.pop(removeSys+"Up")
-           systematics.pop(removeSys+"Down")
+            try:
+                systematics.pop(removeSys+"Up")
+                systematics.pop(removeSys+"Down")
+            except KeyError:
+                pass    
 
         if verbosity > 0:
             print "Only including the following systematics"
             pprint(systematics)
 
-    
+    if scaleToNominal:
+        print "Scaling the following systematics to the nominal rate: "
+        for _s,_systs in systematicsToScale.items():
+            print "%s\t%s" % (_s,_systs)
+
+    if useMorphFile:
+        print "Using morphed tt templates from %s" % args.extMorphFile
+        extMorphF = TFile.Open(extMorphFile, "read")
+        if morphRates:
+            ttnomRate = 113799
+            print "tt nominal rate hardcoded to %d" % ttnomRate
+
     masses = {}
     #masses["TTbar"] = [1665, 1695, 1715, 1725, 1735, 1755, 1785]
     #masses["ST_tW"] = [1695, 1725, 1755]
@@ -310,19 +356,26 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
     WJets = {}
     ST_bkgd = {}
 
-    if len(obsList) == 0 or "all" in obsList:
-        # Use all observables
-        observables = _observables
-    else:
-        # Use only these observables
-        observables = obsList
+#    if len(obsList) == 0 or "all" in obsList:
+#        # Use all observables
+#        observables = _observables
+#    else:
+#        # Use only these observables
+#        observables = obsList
 
-   
+    print "Observables:",
+    for _obs in observables: print (" "+_obs),
+    print "" 
     
     diffSyst = {}   # Ratio of syst/nominal @ mt=172.5 for separate sample systematics
 
-    useVariableBinning = None 
-    variableBins = None 
+    if binning is not None:
+        useVariableBinning = True 
+        variableBins = True
+    else:
+        useVariableBinning = None 
+        variableBins = None 
+    
     # Backgrounds
     for b in background:
         templates[b] = {}
@@ -401,7 +454,7 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
             if s == "ST_tW" and systType in ttOnlySysts: continue
             templates[s][syst] = {}
 
-            if systType in separateSystSamples:
+            if systType in separateSystSamples[s]:
                 # Samples only exist for mt = 172.5
 #                if s == "TTbar":
 #                    print "%s is a separate sample" % syst
@@ -420,7 +473,6 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                             tmp = f.Get("%s_%s" % (recoObs,fName)).Clone("__"+_histname)
                             templates[s][syst][recoObs][int(decimalScaling*172.5)] = tmp.Rebin(len(binning)-1, _histname, array('d', binning))
                             templates[s][syst][recoObs][int(decimalScaling*172.5)].SetDirectory(0)
-                            #templates[s][syst][recoObs][int(decimalScaling*172.5)].Scale(1., "width")
                         elif cutMin == 0 and cutMax == 0:
                             templates[s][syst][recoObs][int(decimalScaling*172.5)] = f.Get("%s_%s" % (recoObs,fName)).Clone(_histname)
                             templates[s][syst][recoObs][int(decimalScaling*172.5)].SetDirectory(0)
@@ -459,7 +511,6 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                                 tmp = f.Get("%s_%s" % (recoObs,fName)).Clone("__"+_histname)
                                 templates[s][syst][recoObs][m] = tmp.Rebin(len(binning)-1, _histname, array('d', binning))
                                 templates[s][syst][recoObs][m].SetDirectory(0)
-                                #templates[s][syst][recoObs][m].Scale(1., "width")
                             elif cutMin == 0 and cutMax == 0:
                                 templates[s][syst][recoObs][m] = f.Get("%s_%s" % (recoObs,fName)).Clone(_histname)
                                 templates[s][syst][recoObs][m].SetDirectory(0)
@@ -501,7 +552,7 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
             if s == "TTbar" and systType in tWOnlySysts: continue
             if s == "ST_tW" and systType in ttOnlySysts: continue
 
-            if systType in separateSystSamples:
+            if systType in separateSystSamples[s]:
                 diffSyst[s][syst] = {}
                 for m in masses[s]:
                     if m == int(decimalScaling*172.5): continue
@@ -526,7 +577,6 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
         
         for s in signal:
             for syst,systDir in systematics.iteritems():
-                
                 if syst.find("Up") >= 0:
                     systType = syst[:syst.find("Up")]
                 elif syst.find("Down") >= 0:
@@ -542,7 +592,33 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                         for m in masses[s]:
                             templates[s][syst][recoObs][m].Rebin(rebin)
 
-    global tt_BinG, tt_BinMorphG
+    # If scaleToNominal is selected, scale those systematics to the nominal rate
+    if scaleToNominal:
+        for s in signal:
+            for syst,systDir in systematics.iteritems():
+                if syst.find("Up") >= 0:
+                    systType = syst[:syst.find("Up")]
+                elif syst.find("Down") >= 0:
+                    systType = syst[:syst.find("Down")]
+                else:
+                    systType = syst
+               
+                if s not in systematicsToScale or systType not in systematicsToScale[s]: continue
+                if syst not in templates[s]: continue
+                if s == "TTbar" and systType in tWOnlySysts: continue
+                if s == "ST_tW" and systType in ttOnlySysts: continue
+                
+                #print "Scaling %s %s" % (s, syst)
+                for obs in observables:
+                    for reco in recoLvls:
+                        recoObs = "%s_%s" % (reco,obs)
+                        for m in masses[s]:
+                            templates[s][syst][recoObs][m].Scale(templates[s]["nominal"][recoObs][m].Integral() / templates[s][syst][recoObs][m].Integral())
+
+    
+   
+
+    global tt_BinG, tt_BinMorphG,tttW_morphed
     # Create morphed templates for tt, tW
     tt_morphed = {}     # Morphed templates
     tt_BinG = {}        # Per-bin graphs for actual templates
@@ -556,6 +632,9 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
     tW_G2D = {}
     tW_GFit = {}
     tW_GErrors = {}
+
+    tttW_morphed = {}
+    tttW_G2D = {}
 
 
     for syst in systematics.keys():
@@ -575,10 +654,21 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
         for obs in observables:
             for reco in recoLvls:
                 recoObs = "%s_%s" % (reco, obs)
-                try:
-                    tt_morphed[syst][recoObs],tt_BinG[syst][recoObs],tt_BinMorphG[syst][recoObs] = morphTemplates(templates["TTbar"][syst][recoObs], morph_masses, name=recoObs+"_tt", title = "%s %s t#bar{t}" % (reco, obsTitle[obs]), precision=precision, systematic = "" if syst == "nominal" else "_"+syst, variableBins=variableBins, interp=interp, morphRates=morphRates, verbosity=verbosity)
-                except KeyError:
-                    pass
+                if useMorphFile:
+                    tt_morphed[syst][recoObs] = {}
+                    for _m in morph_masses:
+                        tt_morphed[syst][recoObs][_m] = extMorphF.Get("tt%d%s" % (_m, "" if syst == "nominal" else "_"+syst))
+                        tt_morphed[syst][recoObs][_m].SetDirectory(0)
+                        if morphRates:
+                            tt_morphed[syst][recoObs][_m].Scale(ttnomRate * ttxsec(mt=_m/10.) / 803. /tt_morphed[syst][recoObs][_m].Integral())
+
+                        else:
+                            tt_morphed[syst][recoObs][_m].Scale(1./tt_morphed[syst][recoObs][_m].Integral())
+                else:
+                    try:
+                        tt_morphed[syst][recoObs],tt_BinG[syst][recoObs],tt_BinMorphG[syst][recoObs] = morphTemplates(templates["TTbar"][syst][recoObs], morph_masses, name=recoObs+"_tt", title = "%s %s t#bar{t}" % (reco, obsTitle[obs]), precision=precision, systematic = "" if syst == "nominal" else "_"+syst, variableBins=variableBins, interp=interp, morphRates=morphRates, verbosity=verbosity)
+                    except KeyError:
+                        pass
 
                 try:
                     tW_morphed[syst][recoObs],tW_BinG[syst][recoObs],tW_BinMorphG[syst][recoObs] = morphTemplates(templates["ST_tW"][syst][recoObs], morph_masses, name=recoObs+"_tW", title = "%s %s tW" % (reco, obsTitle[obs]), precision=precision, systematic = "" if syst == "nominal" else "_"+syst, variableBins=variableBins, interp="pol1", morphRates=morphRates, verbosity=verbosity)
@@ -596,6 +686,61 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                     pass
 
 
+    # Create sum tt+tW templates
+    if "TTbar" in signal and "ST_tW" in signal:
+        templates["tt+tW"] = {}
+        for syst,systDir in systematics.iteritems():
+            
+            if syst.find("Up") >= 0:
+                systType = syst[:syst.find("Up")]
+            elif syst.find("Down") >= 0:
+                systType = syst[:syst.find("Down")]
+            else:
+                systType = syst
+           
+            templates["tt+tW"][syst] = {}
+            tttW_morphed[syst] = {}
+
+            for obs in observables:
+                for reco in recoLvls:
+                    recoObs = "%s_%s" % (reco,obs)
+                    if not recoObs in templates["tt+tW"][syst]:
+                        templates["tt+tW"][syst][recoObs] = {}
+                    if not recoObs in tttW_morphed[syst]:
+                        tttW_morphed[syst][recoObs] = {}
+
+                    # Actual tt+tW templates
+                    for m in masses["ST_tW"]:
+                        if systType not in tWOnlySysts:
+                            templates["tt+tW"][syst][recoObs][m] = templates["TTbar"][syst][recoObs][m].Clone(templates["TTbar"][syst][recoObs][m].GetName().replace("ttactual","tttWactual") )
+                            if systType not in ttOnlySysts:
+                                templates["tt+tW"][syst][recoObs][m].Add(templates["ST_tW"][syst][recoObs][m])
+                            else:
+                                # Add nominal tW
+                                templates["tt+tW"][syst][recoObs][m].Add(templates["ST_tW"]["nominal"][recoObs][m])
+
+                        else:
+                            templates["tt+tW"][syst][recoObs][m] = templates["ST_tW"][syst][recoObs][m].Clone(templates["ST_tW"][syst][recoObs][m].GetName().replace("tWactual","tttWactual") )
+                            # Use nominal tt 
+                            templates["tt+tW"][syst][recoObs][m].Add(templates["TTbar"]["nominal"][recoObs][m])
+
+                        exec('massStr = "%.' + str(precision) + 'f" % (m/decimalScaling)')
+                        templates["tt+tW"][syst][recoObs][m].SetTitle("%s %s %s  m_{t} = %s GeV" % (reco, obsTitle[obs], "t#bar{t} + tW", massStr))
+
+                    # Morphed tt+tW templates (summed after morphing)
+                    for m in morph_masses:
+                        if systType not in tWOnlySysts:
+                            tttW_morphed[syst][recoObs][m] = tt_morphed[syst][recoObs][m].Clone(tt_morphed[syst][recoObs][m].GetName().replace("tt","tttW"))
+                            if systType not in ttOnlySysts:
+                                tttW_morphed[syst][recoObs][m].Add(tW_morphed[syst][recoObs][m])
+                            else:
+                                tttW_morphed[syst][recoObs][m].Add(tW_morphed["nominal"][recoObs][m])
+                        else:
+                            tttW_morphed[syst][recoObs][m] = tW_morphed[syst][recoObs][m].Clone(tW_morphed[syst][recoObs][m].GetName().replace("tW","tttW"))
+                            tttW_morphed[syst][recoObs][m].Add(tt_morphed["nominal"][recoObs][m])
+
+                        exec('massStr = "%.' + str(precision) + 'f" % (m/decimalScaling)')
+                        tttW_morphed[syst][recoObs][m].SetTitle("%s %s %s  m_{t} = %s GeV" % (reco, obsTitle[obs], "t#bar{t} + tW", massStr))
     data_obs = {}
     for obs in observables:
         for reco in recoLvls:
@@ -646,7 +791,9 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                 
                 for m in morph_masses:
                     if PU_mt1725only and "pileup" in syst and m != int(decimalScaling*172.5): continue
-                    
+                
+                    # tt+tW templates
+                    tttW_morphed[syst][recoObs][m].Write(tttW_morphed[syst][recoObs][m].GetName()[len(recoObs)+1:])
                     try:
                         tt_morphed[syst][recoObs][m].Write(tt_morphed[syst][recoObs][m].GetName()[len(recoObs)+1:])
                     except KeyError:
@@ -657,7 +804,10 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                     except KeyError:
                         pass
     
-                
+                if "TTbar" in signal and "ST_tW" in signal:
+                    for m in masses["ST_tW"]:
+                        templates["tt+tW"][syst][recoObs][m].Write()
+
                 for s in signal:
                     if s == "TTbar" and systType in tWOnlySysts: continue
                     if s == "ST_tW" and systType in ttOnlySysts: continue
@@ -670,6 +820,8 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
 #                            pass
 #                        #templates[s][syst][recoObs][m].Write(templates[s][syst][recoObs][m].GetName()[len(recoObs):])
                 
+
+
                 if includeGraphs:
                     try:
                         tt_G2D[syst][recoObs].Write(tt_G2D[syst][recoObs].GetName()[len(recoObs)+1:])
@@ -815,9 +967,9 @@ if __name__ == "__main__":
     parser.add_argument("--topDir", default="/uscms_data/d3/msaunder/TopMass/CMSSW_8_0_26_patch1/src/TopNtuplizer/Plotting", help="path to Plotting directory")
     parser.add_argument("-i", dest="inDir", default="histograms", help="Input directory containing ttrees")
     parser.add_argument("-o", dest="outF", default="mtTemplatesForCH.root", help="Output template file")
-    parser.add_argument("--debugOut", default="debug_templates.pklz", help="output file to store pickled template info")
+    parser.add_argument("--debugOut", default="", help="output file to store pickled template info")
     parser.add_argument("-b", "--rebin", type=int, default=1, help="Integer rebin width in GeV")
-    parser.add_argument("--systs", default="", nargs="*", choices=allSystematics, help="ONLY plot these systematics")
+    parser.add_argument("--systs", default="", nargs="*", choices=(allSystematics + ["none","None"]), help="ONLY plot these systematics")
     parser.add_argument("--cutMin", type=int, default=0, help="bins to cut from the left in GeV (before rebinning)")
     parser.add_argument("--cutMax", type=int, default=0, help="bins to cut from the right in GeV (before rebinning)")
     parser.add_argument("--minmt", type=float, default=166.5, help="minimum mass for morphing range")
@@ -825,11 +977,15 @@ if __name__ == "__main__":
     parser.add_argument("--deltaMT", type=float, default=0.1, help="morphing mass increment (in GeV)") 
     #parser.add_argument("--obs", nargs="+", default=[], help="include these observables")
     parser.add_argument("--morphRates", action="store_true", default=False, help="interpolate non-normalized histograms")
+    parser.add_argument("--noScalingToNominal", action="store_true", default=False, help="don't scale certain systematics to the nominal rate")
+    parser.add_argument("--useMorphFile", action="store_true", default=False, help="use morphed templates from external file instead of doing morphing here")
+    parser.add_argument("--extMorphFile", default="/uscms/homes/m/msaunder/work/DNN_TemplateMorphing/new/newplots/morphTF.root", help="external morph template file loaded when useMorphFile option is selected")
     parser.add_argument("-r", "--rateScaling", type=float, default=1., help="scale rates by a constant factor")
+#    parser.add_argument("--bins", type=str, default="[0, 15, 30, 45, 60, 70, 80, 90, 100, 110, 120, 130, 140]", help="List of variable bin ranges. The last entry is the upper edge of the last bin. All other entries are the lower bin edges")
     parser.add_argument("--bins", type=str, default="", help="List of variable bin ranges. The last entry is the upper edge of the last bin. All other entries are the lower bin edges")
     parser.add_argument("--newErrors", action="store_true", default=False, help="use new error method")
     parser.add_argument("--precision", type=int, default=1, help="number of decimal places to use for morphing")
-    parser.add_argument("--obs", nargs="+", default=['ptll'], help="include these observables")
+    parser.add_argument("--obs", nargs="+", default=['ptll'], choices=(_observables + ["all"]), help="include these observables (or 'all' for all 6)")
     parser.add_argument("--reco", nargs="+", default=["rec"], choices=["rec","gen"], help="reco lvl")
     parser.add_argument("--interp", default="pol3", help="ttbar interpolation function to use in ROOT Fit")
     parser.add_argument("--plots", action = "store_true", help="create bin plots")
@@ -837,6 +993,11 @@ if __name__ == "__main__":
     parser.add_argument("--includeGraphs", action="store_true", default=False, help="Store per-bin graphs in output root file")
     parser.add_argument("-v", "-V", "--verbosity", dest="verbosity", type=int, default=0, help="verbosity of output")
     args = parser.parse_args()
+
+    scaleToNominal = not args.noScalingToNominal
+    if "all" in args.obs:
+        # Include all observables
+        args.obs = _observables
 
     if args.precision < 0:
         print "Cannot have %d decimal places! Defaulting to 1" % args.precision
@@ -846,6 +1007,14 @@ if __name__ == "__main__":
         # Increase precision to leading decimal value in deltaMT
         args.precision = int(TMath.Ceil(TMath.Log10(1./args.deltaMT)))
         print "Using precision: %d" % args.precision 
+
+    if args.debugOut == "":
+        if "mtTemplatesForCH.root" in args.outF:
+            args.debugOut = args.outF.replace("mtTemplatesForCH.root", "debugTemplates.pklz")
+        elif ".root" in args.outF:
+            args.debugOut = args.outF.replace(".root", "debugTemplates.pklz")
+        else:
+            args.debugOut = "debugTemplates.pklz"
 
     global precision,decimalScaling
     precision = args.precision          # Number of decimal places 
@@ -870,6 +1039,6 @@ if __name__ == "__main__":
     
     # Create a set of templates for the given ttres and config 
     #ttG2D,ttGFit,ttGerrors = create_templates(inDir=args.inDir, rebin=args.rebin, interp=args.interp, outF=args.outF, makePlots=args.plots, plotDir=args.plotDir)
-    templates,tt_morphed,tW_morphed,tt_G2D,tt_GFit,tt_GErrors, diffSyst = create_templates(inDir="%s/%s" % (args.topDir,args.inDir), includedSysts=args.systs, cutMin=args.cutMin, cutMax=args.cutMax, massMin=args.minmt, massMax=args.maxmt, deltaMT=args.deltaMT, rateScaling=args.rateScaling, obsList=args.obs, recoLvls=args.reco, rebin=args.rebin, bins=args.bins, interp=args.interp, outF=args.outF, makePlots=args.plots, plotDir=args.plotDir, debugOut=args.debugOut, includeGraphs=args.includeGraphs, morphRates=args.morphRates, verbosity=args.verbosity)
+    templates,tt_morphed,tW_morphed,tt_G2D,tt_GFit,tt_GErrors, diffSyst = create_templates(inDir="%s/%s" % (args.topDir,args.inDir), includedSysts=args.systs, cutMin=args.cutMin, cutMax=args.cutMax, massMin=args.minmt, massMax=args.maxmt, deltaMT=args.deltaMT, rateScaling=args.rateScaling, observables=args.obs, recoLvls=args.reco, rebin=args.rebin, bins=args.bins, interp=args.interp, outF=args.outF, makePlots=args.plots, plotDir=args.plotDir, debugOut=args.debugOut, includeGraphs=args.includeGraphs, morphRates=args.morphRates, useMorphFile=args.useMorphFile, extMorphFile=args.extMorphFile, scaleToNominal=scaleToNominal,verbosity=args.verbosity)
 
 

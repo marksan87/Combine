@@ -21,6 +21,7 @@ systUnc = 0.
 statUnc = 0.
 
 CR_systs = [u'CRGluon', u'CRQCD', u'CRerdON']
+generator_systs = [u'amcanlo', u'madgraph', u'herwigpp']
 experimentalSysts = [u'pileup', u'Lumi', u'BTagSF', u'EleIDEff', u'EleRecoEff', u'EleScale', u'EleSmear', u'MuIDEff', u'MuIsoEff', u'MuTrackEff', u'MuScale', u'TrigEff', u'JEC', u'JER', u'BkgNorm' ]
 theorySysts = [u'toppt', u'Q2', u'isr', u'fsr', u'Pdf', u'hdamp', u'UE', u'CRerdON', u'CRGluon', u'CRQCD', u'amcanlo', u'madgraph', u'herwigpp', u'DS']
 
@@ -33,11 +34,13 @@ parser.add_argument('--translate', '-t', help='JSON file for remapping of parame
 parser.add_argument('--units', default=None, help='Add units to the best-fit parameter value')
 parser.add_argument('--per-page', type=int, default=30, help='Number of parameters to show per page')
 #parser.add_argument('--cms-label', default='Internal', help='Label next to the CMS logo')
+parser.add_argument("--ignoreGenerators", action="store_true", default=False, help="ignore MC generator systematics")
 parser.add_argument("--splitUnc", action="store_true", default=False, help="display stat/syst breakdown")
 parser.add_argument('--cms-label', default='Work in Progress', help='Label next to the CMS logo')
 parser.add_argument('--transparent', action='store_true', help='Draw areas as hatched lines instead of solid')
 parser.add_argument('--color-groups', default=None, help='Comma separated list of GROUP=COLOR')
 args = parser.parse_args()
+
 
 canvasW = 700
 canvasH = 600
@@ -84,6 +87,7 @@ decimalScaling = 10**precision
 POI_fit = data['POIs'][selectedPOI]['fit']
 # Fit uncertainty
 
+paramsToRemove = []
 # Sort parameters by largest absolute impact on this POI
 data['params'].sort(key=lambda x: abs(x['impact_%s' % POIs[selectedPOI]]), reverse=True)
 if args.POI == "MT":
@@ -92,9 +96,16 @@ if args.POI == "MT":
         data[u'POIs'][selectedPOI][u'fit'][i] = fit/decimalScaling
 
     for p in xrange(len(data[u'params'])):
+        if args.ignoreGenerators and data[u'params'][p]["name"] in generator_systs: 
+            print "Skipping parameter %d: %s" % (p, data[u'params'][p]["name"])
+            paramsToRemove.append(p)
         data[u'params'][p][u'impact_MT'] /= decimalScaling
         for v,mt in enumerate(data[u'params'][p][u'MT']):
             data[u'params'][p][u'MT'][v] = mt/decimalScaling
+
+for i,p in enumerate(sorted(paramsToRemove)):
+    print "Removing %s" % data[u'params'][p-i]["name"]
+    data[u'params'].pop(p-i)    # List position will get shifted each time a param is popped
 
 fitUnc = (POI_fit[2] - POI_fit[0]) / 2
 # Set the number of parameters per page (show) and the number of pages (n)
@@ -339,15 +350,15 @@ for page in xrange(n):
     #plot.DrawCMSLogo(pads[0], 'CMS', args.cms_label, 0, 0.25, 0.00, 0.00)
     if args.POI == "MT":
         if args.splitUnc:
-            plot.DrawTitle(pads[1], '#hat{%s} = %.2f #pm %.2f(stat) #pm %.2f(syst)%s' % (
+            plot.DrawTitle(pads[1], "#hat{%s} = %.2f #pm %.2f(stat) #pm %.2f(syst)%s" % (
                 Translate("m_{ t}", translate), POI_fit[1], statUnc, systUnc,
                 '' if args.units is None else ' '+args.units), 3)
         else:
-            plot.DrawTitle(pads[1], '#hat{%s} = %.3f #pm %.3f%s' % (
+            plot.DrawTitle(pads[1], "#hat{%s} = %.3f #pm %.3f%s" % (
                 Translate("m_{ t}", translate), POI_fit[1], (POI_fit[2] - POI_fit[0]) / 2.,
                 '' if args.units is None else ' '+args.units), 3)
     else:
-        plot.DrawTitle(pads[1], '#hat{%s} = %.3g #pm %.3g%s' % (
+        plot.DrawTitle(pads[1], "#hat{%s} = %.3g #pm %.3g%s" % (
             Translate(POIs[selectedPOI], translate), POI_fit[1], (POI_fit[2] - POI_fit[0]) / 2.,
             '' if args.units is None else ' '+args.units), 3)
     extra = ''
