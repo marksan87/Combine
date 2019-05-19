@@ -59,7 +59,7 @@ combine -M MultiDimFit ${cardRoot} -m 125 -P MT --robustFit 1 --algo none $param
 
 if [ $nosyst == 1 ] ; then 
     echo "./plot1DScan.py higgsCombinenominal.MultiDimFit.mH125.root --POI ${mtScaled} --output ${outputName}"
-    ./plot1DScan.py higgsCombinenominal.MultiDimFit.mH125.root --POI ${mtScaled} --output ${outputName}
+    ../plot1DScan.py higgsCombinenominal.MultiDimFit.mH125.root --POI ${mtScaled} --output ${outputName}
 else
 
     # Freeze all systematics

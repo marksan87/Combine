@@ -272,7 +272,7 @@ def morphTemplates2D(templates, morph_masses, name, title, systematic="", variab
 
 
 
-def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massMax, deltaMT, rateScaling, observables, recoLvls, interp, outF, bins, makePlots, plotDir, debugOut, includeGraphs, morphRates, useMorphFile, extMorphFile, scaleToNominal, verbosity=1): 
+def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massMax, deltaMT, rateScaling, observables, recoLvls, interp, outF, bins, makePlots, plotDir, debugOut, includeGraphs, morphRates, useMorphFile, extMorphFile, scaleToNominal, normalize, verbosity=1): 
     binning = None
     if bins != "":
         binning = eval(bins)
@@ -742,11 +742,15 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                         exec('massStr = "%.' + str(precision) + 'f" % (m/decimalScaling)')
                         tttW_morphed[syst][recoObs][m].SetTitle("%s %s %s  m_{t} = %s GeV" % (reco, obsTitle[obs], "t#bar{t} + tW", massStr))
     data_obs = {}
+
+
     for obs in observables:
         for reco in recoLvls:
             recoObs = "%s_%s" % (reco,obs)
-            #data_obs[recoObs] = templates["TTbar"]["nominal"][recoObs][int(decimalScaling*172.5)].Clone("data_obs")
-            data_obs[recoObs] = tt_morphed["nominal"][recoObs][int(decimalScaling*172.5)].Clone("data_obs")
+#            data_obs[recoObs] = tttW_morphed["nominal"][recoObs][int(decimalScaling*175.5)].Clone("data_obs")
+            data_obs[recoObs] = templates["TTbar"]["nominal"][recoObs][int(decimalScaling*175.5)].Clone("data_obs")
+            data_obs[recoObs].Add(templates["ST_tW"]["nominal"][recoObs][int(decimalScaling*175.5)])
+            #data_obs[recoObs] = tt_morphed["nominal"][recoObs][int(decimalScaling*172.5)].Clone("data_obs")
             data_obs[recoObs].SetTitle("data_obs")
             #data_obs[recoObs].Add(templates["ST_tW"]["nominal"][recoObs][int(decimalScaling*172.5)])
 #            data_obs[recoObs].Add(tW_morphed["nominal"][recoObs][int(decimalScaling*172.5)])
@@ -754,6 +758,30 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                 # Omit WJets
                 if b != "WJets":
                     data_obs[recoObs].Add(templates[b][recoObs])
+
+
+    if normalize:
+        # Normalize disributions to unity
+        print "Normalizing morphed templates to nominal rate"
+        
+        for obs in observables:
+            for reco in recoLvls:
+                recoObs = "%s_%s" % (reco,obs)
+                
+                for m in morph_masses:
+                    tttW_morphed[syst][recoObs][m].Scale(tttW_morphed["nominal"][recoObs][int(decimalScaling*175.5)].Integral()/tttW_morphed["nominal"][recoObs][m].Integral()) 
+                
+#                for syst,systDir in systematics.iteritems():
+#                    
+#                    if syst.find("Up") >= 0:
+#                        systType = syst[:syst.find("Up")]
+#                    elif syst.find("Down") >= 0:
+#                        systType = syst[:syst.find("Down")]
+#                    else:
+#                        systType = syst
+#                    
+#                    for m in morph_masses:
+#                        tttW_morphed[syst][recoObs][m].Scale(tttW_morphed["nominal"][recoObs][m].Integral()/tttW_morphed[syst][recoObs][m].Integral()) 
 
     outFile = TFile.Open(outF, "recreate")
     for obs in observables:
@@ -975,7 +1003,7 @@ if __name__ == "__main__":
     parser.add_argument("--minmt", type=float, default=166.5, help="minimum mass for morphing range")
     parser.add_argument("--maxmt", type=float, default=178.5, help="maximum mass for morphing range")
     parser.add_argument("--deltaMT", type=float, default=0.1, help="morphing mass increment (in GeV)") 
-    #parser.add_argument("--obs", nargs="+", default=[], help="include these observables")
+    parser.add_argument("--normalize", action="store_true", default=False, help="normalize to unity") 
     parser.add_argument("--morphRates", action="store_true", default=False, help="interpolate non-normalized histograms")
     parser.add_argument("--noScalingToNominal", action="store_true", default=False, help="don't scale certain systematics to the nominal rate")
     parser.add_argument("--useMorphFile", action="store_true", default=False, help="use morphed templates from external file instead of doing morphing here")
@@ -1039,6 +1067,6 @@ if __name__ == "__main__":
     
     # Create a set of templates for the given ttres and config 
     #ttG2D,ttGFit,ttGerrors = create_templates(inDir=args.inDir, rebin=args.rebin, interp=args.interp, outF=args.outF, makePlots=args.plots, plotDir=args.plotDir)
-    templates,tt_morphed,tW_morphed,tt_G2D,tt_GFit,tt_GErrors, diffSyst = create_templates(inDir="%s/%s" % (args.topDir,args.inDir), includedSysts=args.systs, cutMin=args.cutMin, cutMax=args.cutMax, massMin=args.minmt, massMax=args.maxmt, deltaMT=args.deltaMT, rateScaling=args.rateScaling, observables=args.obs, recoLvls=args.reco, rebin=args.rebin, bins=args.bins, interp=args.interp, outF=args.outF, makePlots=args.plots, plotDir=args.plotDir, debugOut=args.debugOut, includeGraphs=args.includeGraphs, morphRates=args.morphRates, useMorphFile=args.useMorphFile, extMorphFile=args.extMorphFile, scaleToNominal=scaleToNominal,verbosity=args.verbosity)
+    templates,tt_morphed,tW_morphed,tt_G2D,tt_GFit,tt_GErrors, diffSyst = create_templates(inDir="%s/%s" % (args.topDir,args.inDir), includedSysts=args.systs, cutMin=args.cutMin, cutMax=args.cutMax, massMin=args.minmt, massMax=args.maxmt, deltaMT=args.deltaMT, rateScaling=args.rateScaling, observables=args.obs, recoLvls=args.reco, rebin=args.rebin, bins=args.bins, interp=args.interp, outF=args.outF, makePlots=args.plots, plotDir=args.plotDir, debugOut=args.debugOut, includeGraphs=args.includeGraphs, morphRates=args.morphRates, useMorphFile=args.useMorphFile, extMorphFile=args.extMorphFile, scaleToNominal=scaleToNominal,normalize=args.normalize,verbosity=args.verbosity)
 
 

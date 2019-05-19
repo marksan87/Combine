@@ -57,6 +57,13 @@ parser.add_argument("--reco", default="rec", choices=["rec","gen"], help="reco l
 parser.add_argument("-v", "--verbosity", type=int, default=3, help="verbosity level (0+)")
 args = parser.parse_args()
 
+if args.outF != "":
+    outF = args.outF
+elif args.inF.find("mtTemplatesForCH.root") >= 0:
+    outF = args.inF.replace("mtTemplatesForCH.root","")
+else:
+    outF = ""
+
 if args.precision < 0:
     print "Cannot have %d decimal places! Defaulting to 1" % args.precision
     args.precision = 1
@@ -84,9 +91,11 @@ precision = args.precision
 decimalScaling = 10**precision
 
 
-outCardName = "%scardMorph.txt" % ("%s_" % args.outF if args.outF != "" else "")
-outRootName = "%soutputfileMorph.root" % ("%s_" % args.outF if args.outF != "" else "")
+outCardName = "%scardMorph.txt" % (outF)
+outRootName = "%soutputfileMorph.root" % (outF)
 
+#outCardName = "%scardMorph.txt" % ("%s_" % args.outF if args.outF != "" else "")
+#outRootName = "%soutputfileMorph.root" % ("%s_" % args.outF if args.outF != "" else "")
 cb = ch.CombineHarvester()
 cb.SetVerbosity(args.verbosity)
 
@@ -136,6 +145,7 @@ cb.AddProcesses(['*'],   ['tt'],['13TeV'],['mtop'],['TTV'],  cats,False)
 cb.AddProcesses(['*'],   ['tt'],['13TeV'],['mtop'],['Diboson'],  cats,False)
 cb.AddProcesses(['*'],   ['tt'],['13TeV'],['mtop'],['ST_bkgd'],  cats,False)
 #cb.AddProcesses(['*'],   ['tt'],['13TeV'],['mtop'],['WJets'],   cats,False)
+
 
 for sig in signals:
     cb.AddProcesses(masses,  ['tt'],['13TeV'],['mtop'],[sig],cats,True)

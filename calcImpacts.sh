@@ -48,13 +48,19 @@ else
 fi
 
 initialMT=$(( minMT + (maxMT - minMT)/2 ))
-parameterArgs="--redefineSignalPOIs MT,r --setParameters MT=${initialMT} --setParameterRanges MT=${minMT},${maxMT}:r=0,2"
+parameterArgs="--redefineSignalPOIs MT,r -m 125 --setParameters MT=${initialMT} --setParameterRanges MT=${minMT},${maxMT}:r=0,2"
+#parameterArgs="--redefineSignalPOIs MH,r --setParameters MH=${initialMT} --setParameterRanges MH=${minMT},${maxMT}:r=0,2"
+
 #poiArgs="--redefineSignalPOIs r,MT --floatOtherPOIs 1 --saveInactivePOI 1 --expectSignal 1"
 #fitArgs="--robustFit 1 --robustHesse 1"
 
-fitArgs="--robustFit 1"
+
+
+fitArgs="--robustFit 1 --expectSignal 1 -t -1"
+#fitArgs="--robustFit 1 --expectSignal 1"
+#fitArgs="--robustFit 1 --expectSignal 0.946291"
 #toyArgs="-t -1 --seed 1"
-toyArgs="-t -1"
+#toyArgs="-t -1"
 #toyArgs=""
 
 #parallel="--parallel 8"
@@ -76,6 +82,11 @@ cardRoot="../${card}.root"
 echo "text2workspace.py ${card}.txt"
 text2workspace.py ${card}.txt
 
+
+#echo "text2workspace.py ${card}.txt -P HiggsAnalysis.CombinedLimit.PhysicsModel:HiggsMassRangeModel"
+#text2workspace.py ${card}.txt -P HiggsAnalysis.CombinedLimit.PhysicsModel:HiggsMassRangeModel
+
+
 echo "mkdir -p ${outputName}"
 mkdir -p ${outputName}
 
@@ -83,15 +94,15 @@ echo "pushd ${outputName}"
 pushd ${outputName}
 
 
-echo "combineTool.py -M Impacts -d ${cardRoot} -m 125 --expectSignal 1 --floatOtherPOIs 1 $fitArgs --doInitialFit $parameterArgs $toyArgs"
-combineTool.py -M Impacts -d ${cardRoot} -m 125 --expectSignal 1 --floatOtherPOIs 1 $fitArgs --doInitialFit $parameterArgs $toyArgs 
+echo "combineTool.py -M Impacts -d ${cardRoot} --floatOtherPOIs 1 $fitArgs --doInitialFit $parameterArgs $toyArgs"
+combineTool.py -M Impacts -d ${cardRoot} --floatOtherPOIs 1 $fitArgs --doInitialFit $parameterArgs $toyArgs 
 
 if [ -z "$nosyst" ] ; then
-    echo "combineTool.py -M Impacts -d ${cardRoot} -m 125 --expectSignal 1 $fitArgs --doFits $parallel $parameterArgs $toyArgs $debug"
-    combineTool.py -M Impacts -d ${cardRoot} -m 125 --expectSignal 1 $fitArgs --doFits $parallel $parameterArgs $toyArgs $debug 
+    echo "combineTool.py -M Impacts -d ${cardRoot} $fitArgs --doFits $parallel $parameterArgs $toyArgs $debug"
+    combineTool.py -M Impacts -d ${cardRoot} $fitArgs --doFits $parallel $parameterArgs $toyArgs $debug 
 
-    echo "combineTool.py -M Impacts -d ${cardRoot} -m 125 $parameterArgs --expectSignal 1 -o ${outputName}.json"
-    combineTool.py -M Impacts -d ${cardRoot} -m 125 $parameterArgs --expectSignal 1 -o ${outputName}.json
+    echo "combineTool.py -M Impacts -d ${cardRoot} $parameterArgs -o ${outputName}.json"
+    combineTool.py -M Impacts -d ${cardRoot} $parameterArgs -o ${outputName}.json
 
     echo "../createImpactPlot.py -i ${outputName}.json -o ${outputName}"
     ../createImpactPlot.py -i ${outputName}.json -o ${outputName}
