@@ -14,7 +14,26 @@ from Style import *
 import CMS_lumi
 
 gStyle.SetOptStat(0)
-obsTitle = {"ptll":"p_{T}(ll)", "ptpos":"p_{T}(l^{+})", "Epos":"E(l^{+})", "ptp_ptm":"p_{T}(l^{+}) + p_{T}(l^{-})", "Ep_Em":"E(l^{+}) + E(l^{-})", "Mll":"M(ll)", "leadLepPt":"Leading Lepton p_{T}", "leadJetPt":"Leading Jet p_{T}"}
+#_diffDists = ["ptll_M0_E0", "ptll_M0_E1", "ptll_M0_E2", "ptll_M1_E0", "ptll_M1_E1", "ptll_M1_E2", "ptll_M2_E0", "ptll_M2_E1", "ptll_M2_E2"]
+_diffDists = ["rec_ptll_M0_E0", "rec_ptll_M0_E1", "rec_ptll_M0_E2", "rec_ptll_M1_E0", "rec_ptll_M1_E1", "rec_ptll_M1_E2", "rec_ptll_M2_E0", "rec_ptll_M2_E1", "rec_ptll_M2_E2"]
+obsTitle = {"ptll":"p_{T}(ll)",
+            "ptpos":"p_{T}(l^{+})",
+            "Epos":"E(l^{+})",
+            "ptp_ptm":"p_{T}(l^{+}) + p_{T}(l^{-})",
+            "Ep_Em":"E(l^{+}) + E(l^{-})",
+            "Mll":"M(ll)",
+            "leadLepPt":"Leading Lepton p_{T}",
+            "leadJetPt":"Leading Jet p_{T}",
+            "ptll_M0_E0":"p_{T}(ll)  M(ll) < 80  E(l^{+}) < 60",
+            "ptll_M0_E1":"p_{T}(ll)  M(ll) < 80  60 <= E(l^{+}) < 100",
+            "ptll_M0_E2":"p_{T}(ll)  M(ll) < 80  100 <= E(l^{+}) < 600",
+            "ptll_M1_E0":"p_{T}(ll)  80 <= M(ll) < 130  E(l^{+}) < 60",
+            "ptll_M1_E1":"p_{T}(ll)  80 <= M(ll) < 130  60 <= E(l^{+}) < 100",
+            "ptll_M1_E2":"p_{T}(ll)  80 <= M(ll) < 130  100 <= E(l^{+}) < 600",
+            "ptll_M2_E0":"p_{T}(ll)  130 <= M(ll) < 600  E(l^{+}) < 60",
+            "ptll_M2_E1":"p_{T}(ll)  130 <= M(ll) < 600  60 <= E(l^{+}) < 100",
+            "ptll_M2_E2":"p_{T}(ll)  130 <= M(ll) < 600  100 <= E(l^{+}) < 600",
+            }
 
 try:
     breakpoint
@@ -185,7 +204,7 @@ oneSidedSysts = ["toppt", "CRerdON", "CRGluon", "CRQCD", "DS", "amcanlo", "madgr
 #systematics = ["Q2", "pileup"]
 #oneSidedSysts = ["toppt"]
 
-ttOnlySysts = ['toppt','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp','MEscale1','MEscale2','MEscale3','MEscale4','MEscale5','MEscale6']
+ttOnlySysts = ['toppt','Pdf','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp','MEscale1','MEscale2','MEscale3','MEscale4','MEscale5','MEscale6']
 tWOnlySysts = ['DS']
 
 signal = ["tt", "tW", "tttW"]
@@ -207,20 +226,20 @@ masses["tttW"] = {"actual":tWactual, "morph":mtmorphed}
 def main():
     MEscaleSysts = ['MEscale1','MEscale2','MEscale3','MEscale4','MEscale5','MEscale6']
     systematics = ["pileup", "Lumi", "EleIDEff", "EleRecoEff", "EleScale", "EleSmear", "MuIDEff", "MuIsoEff", "MuTrackEff", "MuScale", "TrigEff", "BTagSF", "JEC", "JER", "toppt", "Q2", "Pdf", "isr", "fsr", 'hdamp','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp','DS']#,'MEscale1','MEscale2','MEscale3','MEscale4','MEscale5','MEscale6']
-    observables = ["rec_ptll", "rec_Mll", "rec_ptpos", "rec_Epos", "rec_ptp_ptm", "rec_Ep_Em", "rec_leadLepPt", "rec_leadJetPt"]
+    observables = ["rec_ptll", "rec_Mll", "rec_ptpos", "rec_Epos", "rec_ptp_ptm", "rec_Ep_Em", "rec_leadLepPt", "rec_leadJetPt"] + _diffDists
     
     parser = ArgumentParser()
     parser.add_argument("-i", "--inF", default="mtTemplatesForCH.root", help="input root file")
-    parser.add_argument("-o", "--outDir", default="momentPlots", help="output directory")
+    parser.add_argument("-o", "--outDir", default="", help="output directory")
     parser.add_argument("-f", "--interp", default="", help="interpolation method used (for label only!)")
     parser.add_argument("-j", "--json", default="impacts.json", help="output json file for moment impacts")
-    parser.add_argument("--format", nargs="+", default=["png","pdf"], help="output file format(s)")
+    parser.add_argument("--format", nargs="+", default=["png"], help="output file format(s)")
     parser.add_argument("--nomoments", action="store_true", default=False, help="ignore moments")
     parser.add_argument("--nocalibration", action="store_true", default=False, help="don't apply calibration to extracted masses")
     parser.add_argument("--nogensysts", action="store_true", default=False, help="don't include alternate MC generator systs")
 #    parser.add_argument("--obs", default="rec_ptll", choices=(observables+["all"]), help="reco_observable")
     parser.add_argument("--systs", default="", nargs="*", choices=(systematics + ["none","None"]), help="ONLY plot these systematics") 
-    parser.add_argument("--obs", nargs="+", default=["rec_ptll"], choices=(observables+["all"]), help="reco_observable")
+    parser.add_argument("--obs", nargs="+", default=["rec_ptll"], choices=(observables+["all","diff"]), help="reco_observable")
     parser.add_argument("--noplots", action="store_true", default=False, help="only create json file, don't make any plots")
     parser.add_argument("--displayhistmoments", action="store_true", default=False, help="display moments on histograms")
     parser.add_argument("--rebin", default=1, help="rebin value")
@@ -229,7 +248,12 @@ def main():
     parser.add_argument("--test", action="store_true", default=False, help="only draw one plot for each type")
     args = parser.parse_args()
 
-    if args.outDir[-1] == "/": args.outDir = args.outDir[:-1]
+    if args.outDir == "":
+        if args.inF.find("mtTemplatesForCH.root") >= 0:
+            args.outDir = args.inF.replace("mtTemplatesForCH.root", "plots")
+        else:
+            args.outDir = "template_plots"
+    elif args.outDir[-1] == "/": args.outDir = args.outDir[:-1]
 #    if args.obs != "all":
 #        observables = [args.obs]
 #        os.system("mkdir -p %s/histplots/mtscan" % args.outDir)
@@ -240,9 +264,17 @@ def main():
 #            os.system("mkdir -p %s/%s/histplots/mtscan" % (args.outDir,obs))
 #            os.system("mkdir -p %s/%s/rates" % (args.outDir,obs))
 #            os.system("mkdir -p %s/%s/calibration" % (args.outDir,obs))
-    if "all" not in args.obs:
+    if "diff" in args.obs:
+        observables = _diffDists
+    elif "all" not in args.obs:
         observables = args.obs
    
+
+    outFormatStr = ""
+    for _fmt in args.format:
+        outFormatStr += "%s, " % _fmt
+    outFormatStr = outFormatStr[:-2]
+    print "Saving plots in the following formats: %s" % outFormatStr
 
     for obs in observables:
         os.system("mkdir -p %s/%s/histplots/mtscan" % (args.outDir,obs))

@@ -17,8 +17,28 @@ allSystematics = ["pileup", "Lumi", "EleIDEff", "EleRecoEff", "EleScale", "EleSm
 
 systematicsToScale = {"TTbar":["Q2","MEscale1","MEscale2","MEscale3","MEscale4","MEscale5","MEscale6"],
                       "ST_tW":["Q2"]}
-_observables = ['ptll', 'Mll', 'ptpos', 'Epos', 'ptp_ptm', 'Ep_Em', "leadLepPt", "leadJetPt"] 
-obsTitle = {"ptll":"p_{T}(ll)", "ptpos":"p_{T}(l^{+})", "Epos":"E(l^{+})", "ptp_ptm":"p_{T}(l^{+}) + p_{T}(l^{-})", "Ep_Em":"E(l^{+}) + E(l^{-})", "Mll":"M(ll)", "leadLepPt":"Leading Lepton p_{T}", "leadJetPt":"Leading Jet p_{T}"}
+
+_diffDists = ["ptll_M0_E0", "ptll_M0_E1", "ptll_M0_E2", "ptll_M1_E0", "ptll_M1_E1", "ptll_M1_E2", "ptll_M2_E0", "ptll_M2_E1", "ptll_M2_E2"]
+_observables = ['ptll', 'Mll', 'ptpos', 'Epos', 'ptp_ptm', 'Ep_Em', "leadLepPt", "leadJetPt"] + _diffDists
+obsTitle = {"ptll":"p_{T}(ll)", 
+            "ptpos":"p_{T}(l^{+})", 
+            "Epos":"E(l^{+})", 
+            "ptp_ptm":"p_{T}(l^{+}) + p_{T}(l^{-})", 
+            "Ep_Em":"E(l^{+}) + E(l^{-})", 
+            "Mll":"M(ll)", 
+            "leadLepPt":"Leading Lepton p_{T}", 
+            "leadJetPt":"Leading Jet p_{T}", 
+            "ptll_M0_E0":"p_{T}(ll)  M(ll) < 80  E(l^{+}) < 60", 
+            "ptll_M0_E1":"p_{T}(ll)  M(ll) < 80  60 <= E(l^{+}) < 100", 
+            "ptll_M0_E2":"p_{T}(ll)  M(ll) < 80  100 <= E(l^{+}) < 600", 
+            "ptll_M1_E0":"p_{T}(ll)  80 <= M(ll) < 130  E(l^{+}) < 60", 
+            "ptll_M1_E1":"p_{T}(ll)  80 <= M(ll) < 130  60 <= E(l^{+}) < 100", 
+            "ptll_M1_E2":"p_{T}(ll)  80 <= M(ll) < 130  100 <= E(l^{+}) < 600", 
+            "ptll_M2_E0":"p_{T}(ll)  130 <= M(ll) < 600  E(l^{+}) < 60", 
+            "ptll_M2_E1":"p_{T}(ll)  130 <= M(ll) < 600  60 <= E(l^{+}) < 100", 
+            "ptll_M2_E2":"p_{T}(ll)  130 <= M(ll) < 600  100 <= E(l^{+}) < 600", 
+            }
+
 signal = ["TTbar", "ST_tW"]
 background = ["DY", "TTV", "WJets", "Diboson", "ST_bkgd"]
 systematics = {"nominal":"hists", \
@@ -96,7 +116,7 @@ separateSystSamples = {
     "TTbar":['isr','fsr','hdamp','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp'],
     "ST_tW":['isr','fsr','hdamp','DS','hdamp', 'Q2']
 }
-ttOnlySysts = ['toppt','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp',"MEscale1","MEscale2","MEscale3","MEscale4","MEscale5","MEscale6"]
+ttOnlySysts = ['toppt','Pdf','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp',"MEscale1","MEscale2","MEscale3","MEscale4","MEscale5","MEscale6"]
 tWOnlySysts = ['DS']
 
 PU_mt1725only = False 
@@ -272,7 +292,7 @@ def morphTemplates2D(templates, morph_masses, name, title, systematic="", variab
 
 
 
-def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massMax, deltaMT, rateScaling, observables, recoLvls, interp, outF, bins, makePlots, plotDir, debugOut, includeGraphs, morphRates, useMorphFile, extMorphFile, scaleToNominal, normalize, verbosity=1): 
+def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massMax, deltaMT, rateScaling, observables, recoLvls, interp, outF, bins, makePlots, plotDir, debug, debugOut, includeGraphs, morphRates, useMorphFile, extMorphFile, scaleToNominal, normalize, verbosity=1): 
     binning = None
     if bins != "":
         binning = eval(bins)
@@ -748,8 +768,8 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
         for reco in recoLvls:
             recoObs = "%s_%s" % (reco,obs)
 #            data_obs[recoObs] = tttW_morphed["nominal"][recoObs][int(decimalScaling*175.5)].Clone("data_obs")
-            data_obs[recoObs] = templates["TTbar"]["nominal"][recoObs][int(decimalScaling*175.5)].Clone("data_obs")
-            data_obs[recoObs].Add(templates["ST_tW"]["nominal"][recoObs][int(decimalScaling*175.5)])
+            data_obs[recoObs] = templates["TTbar"]["nominal"][recoObs][int(decimalScaling*172.5)].Clone("data_obs")
+            data_obs[recoObs].Add(templates["ST_tW"]["nominal"][recoObs][int(decimalScaling*172.5)])
             #data_obs[recoObs] = tt_morphed["nominal"][recoObs][int(decimalScaling*172.5)].Clone("data_obs")
             data_obs[recoObs].SetTitle("data_obs")
             #data_obs[recoObs].Add(templates["ST_tW"]["nominal"][recoObs][int(decimalScaling*172.5)])
@@ -920,16 +940,17 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
 
         print "Plots saved to %s" % plotDir
 
-    with gzip.open(debugOut, "wb") as f:
-        pickle.dump(templates, f, protocol=pickle.HIGHEST_PROTOCOL)
-        pickle.dump(tt_G2D, f, protocol=pickle.HIGHEST_PROTOCOL)
-        pickle.dump(tt_GFit, f, protocol=pickle.HIGHEST_PROTOCOL)
-        pickle.dump(tt_GErrors, f, protocol=pickle.HIGHEST_PROTOCOL)
-        pickle.dump(tW_G2D, f, protocol=pickle.HIGHEST_PROTOCOL)
-        pickle.dump(tW_GFit, f, protocol=pickle.HIGHEST_PROTOCOL)
-        pickle.dump(tW_GErrors, f, protocol=pickle.HIGHEST_PROTOCOL)
-        pickle.dump(diffSyst, f, protocol=pickle.HIGHEST_PROTOCOL)
-    print "Debugging info saved to %s\n" % debugOut 
+    if debug:
+        with gzip.open(debugOut, "wb") as f:
+            pickle.dump(templates, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(tt_G2D, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(tt_GFit, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(tt_GErrors, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(tW_G2D, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(tW_GFit, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(tW_GErrors, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(diffSyst, f, protocol=pickle.HIGHEST_PROTOCOL)
+        print "Debugging info saved to %s\n" % debugOut 
     return templates,tt_morphed,tW_morphed,tt_G2D,tt_GFit,tt_GErrors,diffSyst
 
 #    for sys,sys_weight in systematics.items():
@@ -995,6 +1016,7 @@ if __name__ == "__main__":
     parser.add_argument("--topDir", default="/uscms_data/d3/msaunder/TopMass/CMSSW_8_0_26_patch1/src/TopNtuplizer/Plotting", help="path to Plotting directory")
     parser.add_argument("-i", dest="inDir", default="histograms", help="Input directory containing ttrees")
     parser.add_argument("-o", dest="outF", default="mtTemplatesForCH.root", help="Output template file")
+    parser.add_argument("--debug", action="store_true", default=False, help="store debugging info")
     parser.add_argument("--debugOut", default="", help="output file to store pickled template info")
     parser.add_argument("-b", "--rebin", type=int, default=1, help="Integer rebin width in GeV")
     parser.add_argument("--systs", default="", nargs="*", choices=(allSystematics + ["none","None"]), help="ONLY plot these systematics")
@@ -1013,11 +1035,11 @@ if __name__ == "__main__":
     parser.add_argument("--bins", type=str, default="", help="List of variable bin ranges. The last entry is the upper edge of the last bin. All other entries are the lower bin edges")
     parser.add_argument("--newErrors", action="store_true", default=False, help="use new error method")
     parser.add_argument("--precision", type=int, default=1, help="number of decimal places to use for morphing")
-    parser.add_argument("--obs", nargs="+", default=['ptll'], choices=(_observables + ["all"]), help="include these observables (or 'all' for all 6)")
+    parser.add_argument("--obs", nargs="+", default=['ptll'], choices=(_observables + ["all","diff"]), help="include these observables (or 'all' for all 6)")
     parser.add_argument("--reco", nargs="+", default=["rec"], choices=["rec","gen"], help="reco lvl")
     parser.add_argument("--interp", default="pol3", help="ttbar interpolation function to use in ROOT Fit")
     parser.add_argument("--plots", action = "store_true", help="create bin plots")
-    parser.add_argument("--plotDir", default="morphed_bins", help="directory to store bin plots if --plots is selected")
+    parser.add_argument("--plotDir", default="", help="directory to store bin plots if --plots is selected")
     parser.add_argument("--includeGraphs", action="store_true", default=False, help="Store per-bin graphs in output root file")
     parser.add_argument("-v", "-V", "--verbosity", dest="verbosity", type=int, default=0, help="verbosity of output")
     args = parser.parse_args()
@@ -1026,6 +1048,8 @@ if __name__ == "__main__":
     if "all" in args.obs:
         # Include all observables
         args.obs = _observables
+    elif "diff" in args.obs:
+        args.obs = _diffDists
 
     if args.precision < 0:
         print "Cannot have %d decimal places! Defaulting to 1" % args.precision
@@ -1043,6 +1067,16 @@ if __name__ == "__main__":
             args.debugOut = args.outF.replace(".root", "debugTemplates.pklz")
         else:
             args.debugOut = "debugTemplates.pklz"
+
+
+    if args.plots and args.plotDir == "":
+        # Directory for bin plots
+        if args.outF.find("mtTemplatesForCH.root") >= 0:
+            args.plotDir = args.outF.replace("mtTemplatesForCH.root", "binPlots")
+        elif args.outF[-5:] == ".root":
+            args.plotDir = args.outF.replace(".root", "_binPlots")
+        else:
+            args.plotDir = "binPlots"
 
     global precision,decimalScaling
     precision = args.precision          # Number of decimal places 
@@ -1067,6 +1101,6 @@ if __name__ == "__main__":
     
     # Create a set of templates for the given ttres and config 
     #ttG2D,ttGFit,ttGerrors = create_templates(inDir=args.inDir, rebin=args.rebin, interp=args.interp, outF=args.outF, makePlots=args.plots, plotDir=args.plotDir)
-    templates,tt_morphed,tW_morphed,tt_G2D,tt_GFit,tt_GErrors, diffSyst = create_templates(inDir="%s/%s" % (args.topDir,args.inDir), includedSysts=args.systs, cutMin=args.cutMin, cutMax=args.cutMax, massMin=args.minmt, massMax=args.maxmt, deltaMT=args.deltaMT, rateScaling=args.rateScaling, observables=args.obs, recoLvls=args.reco, rebin=args.rebin, bins=args.bins, interp=args.interp, outF=args.outF, makePlots=args.plots, plotDir=args.plotDir, debugOut=args.debugOut, includeGraphs=args.includeGraphs, morphRates=args.morphRates, useMorphFile=args.useMorphFile, extMorphFile=args.extMorphFile, scaleToNominal=scaleToNominal,normalize=args.normalize,verbosity=args.verbosity)
+    templates,tt_morphed,tW_morphed,tt_G2D,tt_GFit,tt_GErrors, diffSyst = create_templates(inDir="%s/%s" % (args.topDir,args.inDir), includedSysts=args.systs, cutMin=args.cutMin, cutMax=args.cutMax, massMin=args.minmt, massMax=args.maxmt, deltaMT=args.deltaMT, rateScaling=args.rateScaling, observables=args.obs, recoLvls=args.reco, rebin=args.rebin, bins=args.bins, interp=args.interp, outF=args.outF, makePlots=args.plots, plotDir=args.plotDir, debug=args.debug, debugOut=args.debugOut, includeGraphs=args.includeGraphs, morphRates=args.morphRates, useMorphFile=args.useMorphFile, extMorphFile=args.extMorphFile, scaleToNominal=scaleToNominal,normalize=args.normalize,verbosity=args.verbosity)
 
 

@@ -56,18 +56,16 @@ parameterArgs="--redefineSignalPOIs MT,r -m 125 --setParameters MT=${initialMT} 
 
 
 
-fitArgs="--robustFit 1 --expectSignal 1 -t -1"
-#fitArgs="--robustFit 1 --expectSignal 1"
+fitArgs="--robustFit 1 --expectSignal 1"
 #fitArgs="--robustFit 1 --expectSignal 0.946291"
 #toyArgs="-t -1 --seed 1"
 #toyArgs="-t -1"
 #toyArgs=""
 
-#parallel="--parallel 8"
+parallel="--parallel 8"
 parallel=""
 
 #debug="-v 2 2>&1 | tee log_${card}.log"
-debug=""
 
 
 
@@ -95,11 +93,11 @@ pushd ${outputName}
 
 
 echo "combineTool.py -M Impacts -d ${cardRoot} --floatOtherPOIs 1 $fitArgs --doInitialFit $parameterArgs $toyArgs"
-combineTool.py -M Impacts -d ${cardRoot} --floatOtherPOIs 1 $fitArgs --doInitialFit $parameterArgs $toyArgs 
+combineTool.py -M Impacts -d ${cardRoot} --floatOtherPOIs 1 $fitArgs --doInitialFit $parameterArgs $toyArgs
 
 if [ -z "$nosyst" ] ; then
-    echo "combineTool.py -M Impacts -d ${cardRoot} $fitArgs --doFits $parallel $parameterArgs $toyArgs $debug"
-    combineTool.py -M Impacts -d ${cardRoot} $fitArgs --doFits $parallel $parameterArgs $toyArgs $debug 
+    echo "combineTool.py -M Impacts -d ${cardRoot} $fitArgs --doFits $parallel $parameterArgs $toyArgs"
+    combineTool.py -M Impacts -d ${cardRoot} $fitArgs --doFits $parallel $parameterArgs $toyArgs 
 
     echo "combineTool.py -M Impacts -d ${cardRoot} $parameterArgs -o ${outputName}.json"
     combineTool.py -M Impacts -d ${cardRoot} $parameterArgs -o ${outputName}.json

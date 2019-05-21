@@ -1,0 +1,24 @@
+universe = vanilla
+executable = runCombineToys.sh 
+Should_Transfer_Files = YES
+WhenToTransferOutput  = ON_EXIT
+
+arguments = $(ProcId)
+output                = condor/combine_task.$(ClusterId).$(ProcId).out
+error                 = condor/combine_task.$(ClusterId).$(ProcId).err
+log                   = condor/combine_task.$(ClusterId).$(ProcId).log
+
+# Send the job to Held state on failure.
+on_exit_hold = (ExitBySignal == True) || (ExitCode != 0)
+
+# Periodically retry the jobs every 1 minutes, up to a maximum of 5 retries.
+periodic_release =  (NumJobStarts < 3) && ((CurrentTime - EnteredCurrentStatus) > 60)
+
+#Arguments = "$(process) 3000"
+Arguments = "25 1000"
+Queue 1
+
+# 1000 toys
+#Arguments = "$(process) 1000"
+#Queue 26
+

@@ -132,13 +132,23 @@ if len(signals) == 1 and signals[0] == "tt":
     print "TTbar only signal. Removing DS systematic"
     theorySysts.remove("DS")
 backgrounds = ['DY','TTV','Diboson','ST_bkgd'] #,'WJets']
-cats = [(0,"%s_%s" %(args.reco,args.obs)), \
-#        (1,'rec_ptpos'), \
-#        (2,'rec_ptp_ptm'), \
-#        (3,'rec_Ep_Em'), \
-#        (4,'rec_Epos'), \
-#        (5,'rec_Mll'), \
+
+if args.obs == "diff":
+    cats = [(0,"rec_ptll_M0_E0"), \
+            (1,"rec_ptll_M0_E1"), \
+            (2,"rec_ptll_M0_E2"), \
+            (3,"rec_ptll_M1_E0"), \
+            (4,"rec_ptll_M1_E1"), \
+            (5,"rec_ptll_M1_E2"), \
+            (6,"rec_ptll_M2_E0"), \
+            (7,"rec_ptll_M2_E1"), \
+            (8,"rec_ptll_M2_E2"), \
+    ]
+else:
+    cats = [(0,"%s_%s" %(args.reco,args.obs)), \
         ]
+
+
 cb.AddObservations(['*'],['tt'],['13TeV'],['mtop'],cats)
 cb.AddProcesses(['*'],   ['tt'],['13TeV'],['mtop'],['DY'],   cats,False)
 cb.AddProcesses(['*'],   ['tt'],['13TeV'],['mtop'],['TTV'],  cats,False)
