@@ -39,11 +39,11 @@ newF = TFile.Open(args.new, "read")
 
 for m in masses:
     print "Now on mass %d" % m
-    oldNom = oldF.Get("%s/ttactual%d" % (recoObs,m)).Clone()
+    oldNom = oldF.Get("%s/%s%d" % (recoObs,signal,m)).Clone()
     oldNom.SetDirectory(0)
     oldNom.SetLineWidth(2)
 
-    newNom = newF.Get("%s/ttactual%d" % (recoObs,m)).Clone()
+    newNom = newF.Get("%s/%s%d" % (recoObs,signal,m)).Clone()
     newNom.SetDirectory(0)
     newNom.SetLineWidth(2)
     

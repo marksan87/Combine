@@ -32,7 +32,7 @@ parser.add_argument('--output', '-o', default="impacts", help='name of the outpu
 parser.add_argument('-p', '--POI', dest="POI", default="MT", help="parameter of interest")
 parser.add_argument('--translate', '-t', help='JSON file for remapping of parameter names')
 parser.add_argument('--units', default=None, help='Add units to the best-fit parameter value')
-parser.add_argument('--per-page', type=int, default=30, help='Number of parameters to show per page')
+parser.add_argument('--per-page', type=int, default=100, help='Number of parameters to show per page')
 #parser.add_argument('--cms-label', default='Internal', help='Label next to the CMS logo')
 parser.add_argument("--ignoreGenerators", action="store_true", default=False, help="ignore MC generator systematics")
 parser.add_argument("--splitUnc", action="store_true", default=False, help="display stat/syst breakdown")
@@ -244,6 +244,8 @@ for page in xrange(n):
 
     thUnc += CR_unc**2
     statUnc = fitUnc**2
+    
+    mcStatUnc = 0.
     for syst, vals in impacts.items():
         maxImpact = max(abs(vals['hi']), abs(vals['lo']))
         statUnc -= maxImpact**2
@@ -252,9 +254,12 @@ for page in xrange(n):
             expUnc += maxImpact**2
         elif syst in theorySysts:
             thUnc += maxImpact**2
+        elif "bin" in syst:
+            mcStatUnc += maxImpact**2
         else:
             print "%s not a theory or experimental uncertainty!" % syst
 
+    mcStatUnc = mcStatUnc**0.5
     systUnc = (expUnc + thUnc)**0.5
     expUnc = expUnc**0.5
     thUnc = thUnc**0.5
@@ -269,6 +274,7 @@ for page in xrange(n):
     print "----------------"
     print " Exp unc: %.3f" % expUnc
     print "  Th unc: %.3f" % thUnc
+    print "  MC unc: %.3f" % mcStatUnc 
     print "----------------"
     print " Sys tot: %.3f" % systUnc
     print "----------------"

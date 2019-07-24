@@ -8,6 +8,7 @@ from pprint import pprint
 
 parser = ArgumentParser()
 parser.add_argument("-i", "--inF", default="bin1_cut220_mtTemplatesForCH.root", help="input template root file binned at 1 GeV")
+parser.add_argument("--obs", default="ptll")
 parser.add_argument("-b", "--bins", type=str, default="", help="List of variable bin ranges. The last entry is the upper edge of the last bin. All other entries are the lower bin edges")
 parser.add_argument("-q", "--quantiles", type=int, default=0, help="rebin to quantiles")
 parser.add_argument("-o", "--outF", default="rebinned_mtTemplatesForCH.root", help="output template root file")
@@ -16,7 +17,7 @@ args = parser.parse_args()
 if args.bins != "":
     bins = eval(args.bins)
 inF = TFile.Open(args.inF, "read")
-d = inF.Get("rec_ptll")
+d = inF.Get("rec_%s" % args.obs)
 #bin_scaling = 1 
 #binsScaled = [bin_scaling*b for b in bins]
 
@@ -32,6 +33,9 @@ if args.quantiles > 0:
 
     bins = [0] + [i for i in yq]
 
+print "Bins:", bins 
+print "\nRounded:", [int(b) for b in bins]
+sys.exit()
 
 hists = []
 # Loop over histograms in input file and save a list of rebinned templates
@@ -66,7 +70,6 @@ for k in d.GetListOfKeys():
 
         hists.append(rebin)
 
-#sys.exit()
 inF.Close()
 
 outF = TFile.Open(args.outF, "recreate")

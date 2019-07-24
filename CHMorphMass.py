@@ -6,7 +6,7 @@ import ROOT
 from argparse import ArgumentParser
 import sys
 from ROOT.TMath import Ceil,Log10
-
+from pprint import pprint
 
 systematics = {\
     "Lumi":"lnN", \
@@ -48,17 +48,21 @@ parser.add_argument("-i", "--inF", default="mtTemplatesForCH.root", help="input 
 parser.add_argument("-o", "--outF", default="", help="append name to output datacard and rootfile")
 parser.add_argument("--minmt", type=float, default=166.5, help="min MT for morph mass range")
 parser.add_argument("--maxmt", type=float, default=178.5, help="max MT for morph mass range")
+parser.add_argument("--noBinStats", action="store_true", default=False, help="don't include binwise statistics for signal")
 parser.add_argument("--deltaMT", type=float, default=0.1, help="MT increments for morphing range")
 parser.add_argument("--precision", type=int, default=1, help="decimal places of precision for morphed templates")
 parser.add_argument("--splineInterp", default="CSPLINE", help="CH roofit morphing interpolation mode")
-parser.add_argument("--systs", default="", nargs="+", choices=(["none"] + systematics.keys()), help="ONLY plot these systematics (or 'none' for no systematics)") 
+parser.add_argument("--systs", default="", nargs="+", choices=(["None","none"] + systematics.keys()), help="ONLY plot these systematics (or 'none' for no systematics)") 
 parser.add_argument("--obs", default="ptll", help="observable")
 parser.add_argument("--reco", default="rec", choices=["rec","gen"], help="reco level")
 parser.add_argument("-v", "--verbosity", type=int, default=3, help="verbosity level (0+)")
 args = parser.parse_args()
 
+
+addBinStats = not args.noBinStats
+
 if args.outF != "":
-    outF = args.outF
+    outF = args.outF + "_"
 elif args.inF.find("mtTemplatesForCH.root") >= 0:
     outF = args.inF.replace("mtTemplatesForCH.root","")
 else:
@@ -75,7 +79,7 @@ elif args.deltaMT < 10**(-args.precision):
 
 if args.systs == "":
     print "All systematics included"
-elif "none" in args.systs:
+elif "none" in args.systs or "None" in args.systs:
     systematics = {}
     print "No systematics included"
 else:
@@ -148,6 +152,13 @@ else:
     cats = [(0,"%s_%s" %(args.reco,args.obs)), \
         ]
 
+if addBinStats and args.obs != "diff" and 'tttW' in signals:
+    f = ROOT.TFile.Open(args.inF, "read")
+    nbins = f.Get("%s_%s/tttW%s" % (args.reco, args.obs,masses[0])).GetNbinsX()
+    print "Using binwise statistical uncertainty nps in %d bins" % nbins
+    for _b in xrange(1, nbins+1):
+        systematics["bin%d"%_b] = "shape"
+    f.Close()
 
 cb.AddObservations(['*'],['tt'],['13TeV'],['mtop'],cats)
 cb.AddProcesses(['*'],   ['tt'],['13TeV'],['mtop'],['DY'],   cats,False)
@@ -189,7 +200,8 @@ cb.cp().signals().ExtractShapes(args.inF,"$BIN/$PROCESS$MASS","$BIN/$PROCESS$MAS
 
 # Bin-by-bin uncertainties
 #bbb = ch.BinByBinFactory()
-#bbb.SetAddThreshold(0.1).SetMergeThreshold(0.5).SetFixNorm(True)
+#bbb.SetAddThreshold(-0.1).SetMergeThreshold(0.01).SetFixNorm(False).SetVerbosity(2)
+##bbb.SetAddThreshold(0.1).SetMergeThreshold(0.5).SetFixNorm(False)
 #bbb.MergeBinErrors(cb.cp().backgrounds())
 #bbb.AddBinByBin(cb.cp().backgrounds(), cb)
 #bbb.MergeBinErrors(cb.cp().signals())
@@ -228,6 +240,9 @@ if len(systematics) > 0:
 # Write to datacard
 cb.PrintAll()
 #cb.WriteDatacard(args.outF, "outputfileMorph.root")
-cb.WriteDatacard(outCardName, outRootName)
+f = ROOT.TFile.Open(outRootName, "recreate")
+cb.WriteDatacard(outCardName, f)
+f.Close()
+#cb.WriteDatacard(outCardName, outRootName)
 
 print "Datacard saved to %s" % outCardName

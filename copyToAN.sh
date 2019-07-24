@@ -54,6 +54,7 @@ declare -a systematics=(
 
 declare -a ttOnlySysts=(
         "Q2" \
+        "Pdf" \
         "toppt" \
         "hdamp" \
         "UE" \
@@ -78,12 +79,16 @@ declare -a signal=(
 
 declare -a plots=(
     "histplots/mtscan/mtscan_TTbar_actual" \
+    "histplots/mtscan/mtscan_TTbar_morph" \
     "histplots/mtscan/mtscan_ST_tW_actual" \
+    "histplots/mtscan/mtscan_ST_tW_morph" \
 )
 
 declare -a systPlots=(
     "histplots/TTbar_actual_hist" \
+    "histplots/TTbar_morph_hist" \
     "histplots/ST_tW_actual_hist" \
+    "histplots/ST_tW_morph_hist" \
 )
 
 mkdir -p $outDir

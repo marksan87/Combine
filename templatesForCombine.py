@@ -11,6 +11,7 @@ from pprint import pprint
 import pickle
 import gzip
 from copy import deepcopy
+from binning import templateBinning
 
 gROOT.SetBatch(True)
 allSystematics = ["pileup", "Lumi", "EleIDEff", "EleRecoEff", "EleScale", "EleSmear", "MuIDEff", "MuIsoEff", "MuTrackEff", "MuScale", "TrigEff", "BTagSF", "JEC", "JER", "toppt", "Q2", "Pdf", "isr", "fsr", 'hdamp','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp','DS',"MEscale1","MEscale2","MEscale3","MEscale4","MEscale5","MEscale6"]
@@ -174,7 +175,227 @@ def makeHist(fName, name, title, config, masses = [], systematic = "", weight="w
     return hist
 
 
-def morphTemplates(templates, morph_masses, name, title, precision=1, systematic="", variableBins=None, interp = "pol3", morphRates = False, verbosity=1):
+def cdfMorphTemplates(templates, morph_masses, name, title, Neff = 0, precision=1, systematic="", interp = "pol3", morphRates = False, verbosity=1):
+    morph = {}
+    fit = {}
+    fitFunc = {}
+    binG = {}
+    binMorphG = {}
+    rates = {}
+    normalized = {}
+    cdf = {}
+    cdfBinG = {}
+    cdfMorph = {}
+    signalType = name[-2:]
+    
+    actual_masses = sorted(templates.keys())
+    if Neff == 0:
+        # Use effective entries from 172.5 template
+        Neff = templates[int(172.5 * decimalScaling)].GetEffectiveEntries()
+
+    if verbosity > 0: print "CDF Morphing  %s  %s with Neff = %d" % (name,systematic[1:],Neff)
+    obs = name[4:-3]
+    for m in actual_masses:
+        if verbosity > 1: print "Now on %s  %s  mt = %.1f" % (name,systematic,m)
+        rates[m] = templates[m].Integral()
+        normalized[m] = templates[m].Clone("__normalized_%s_%s_mt%d" % (name,systematic,m))
+        normalized[m].SetDirectory(0)
+        if not morphRates:
+            normalized[m].Scale(1.0 / rates[m])
+
+        # Create cdf
+        cdf[m] = normalized[m].GetCumulative()
+
+    # Morph bins of the cdf
+    for b in xrange(1, cdf[actual_masses[0]].GetNbinsX()+1):
+        binG[b] = TGraphErrors(len(actual_masses), array('d', [m/decimalScaling for m in actual_masses]), array('d', [normalized[m].GetBinContent(b) for m in actual_masses]), array('d', [0.] * len(actual_masses)), array('d', [normalized[m].GetBinError(b) for m in actual_masses]))
+        binG[b].SetName("%s%sbin_%d" % (name, "" if systematic == "" else systematic+"_",b))
+        binG[b].SetTitle("%s  Bin %d" % (obs,b))
+        binG[b].GetXaxis().SetTitle("m_{t} [GeV]")
+        binG[b].GetYaxis().SetTitle("Entries")
+        binG[b].GetYaxis().SetTitleOffset(1.3)
+        
+        cdfBinG[b] = TGraphErrors(len(actual_masses), array('d', [m/decimalScaling for m in actual_masses]), array('d', [cdf[m].GetBinContent(b) for m in actual_masses]), array('d', [0.] * len(actual_masses)), array('d', [cdf[m].GetBinError(b) for m in actual_masses]))
+        cdfBinG[b].SetName("cdf_%s%sbin_%d" % (name, "" if systematic == "" else systematic+"_",b))
+        cdfBinG[b].SetTitle("CDF  %s  Bin %d" % (obs,b))
+        cdfBinG[b].GetXaxis().SetTitle("m_{t} [GeV]")
+        cdfBinG[b].GetYaxis().SetTitle("Entries")
+        cdfBinG[b].GetYaxis().SetTitleOffset(1.3)
+        cdfBinG[b].Draw()
+        fit[b] = cdfBinG[b].Fit(interp, "S"+ ("" if verbosity > 1 else "Q"))
+        fitFunc[b] = cdfBinG[b].GetFunction(interp)
+        errors = array('d', [0.] * len(morph_masses))
+        fit[b].GetConfidenceIntervals(len(morph_masses), 1, 1, array('d', [m/decimalScaling for m in morph_masses]), errors, 2./3., False)
+        for i,m in enumerate(morph_masses):
+            exec('massStr = "%.' + str(precision) + 'f" % (m/decimalScaling)')
+            if m not in cdfMorph:
+                if len(cdf[actual_masses[0]].GetXaxis().GetXbins()) == 0:
+                    cdfMorph[m] = TH1F("__cdf_%s%d%s" % (name,m,systematic), "CDF %s  m_{t} = %s GeV" % (title, massStr), normalized[actual_masses[0]].GetNbinsX(), normalized[actual_masses[0]].GetXaxis().GetXmin(), normalized[actual_masses[0]].GetXaxis().GetXmax())
+                else:
+                    cdfMorph[m] = TH1F("__cdf_%s%d%s" % (name,m,systematic), "CDF %s  m_{t} = %s GeV" % (title, massStr), normalized[actual_masses[0]].GetNbinsX(), array('d',normalized[actual_masses[0]].GetXaxis().GetXbins())) 
+            cdfMorph[m].SetBinContent(b, fitFunc[b].Eval(m/decimalScaling))
+   
+    # 'Differentiate' back to pdf
+    for i,m in enumerate(morph_masses):
+        if m not in morph:
+            if len(cdf[actual_masses[0]].GetXaxis().GetXbins()) == 0:
+                morph[m] = TH1F("%s%d%s" % (name,m,systematic), "%s  m_{t} = %s GeV" % (title, massStr), normalized[actual_masses[0]].GetNbinsX(), normalized[actual_masses[0]].GetXaxis().GetXmin(), normalized[actual_masses[0]].GetXaxis().GetXmax())
+            else:
+                morph[m] = TH1F("%s%d%s" % (name,m,systematic), "%s  m_{t} = %s GeV" % (title, massStr), normalized[actual_masses[0]].GetNbinsX(), array('d',normalized[actual_masses[0]].GetXaxis().GetXbins())) 
+        
+        # Set bin contents
+        morph[m].SetBinContent(1, cdfMorph[m].GetBinContent(1))
+        for b in xrange(2, cdf[actual_masses[0]].GetNbinsX()+1):
+            morph[m].SetBinContent(b, (cdfMorph[m].GetBinContent(b) - cdfMorph[m].GetBinContent(b-1)) )
+        
+        # Set bin errors
+        N = morph[m].Integral()
+        for b in xrange(1, cdfMorph[actual_masses[0]].GetNbinsX()+1):
+            morph[m].SetBinError(b, (morph[m].GetBinContent(b)*N/Neff)**0.5)
+
+    for b in xrange(1, morph[morph_masses[0]].GetNbinsX()+1):
+        binMorphG[b] = TGraphErrors(len(morph_masses), array('d', [m/decimalScaling for m in morph_masses]), array('d', [morph[m].GetBinContent(b) for m in morph_masses]), array('d', [0.] * len(morph_masses)), array('d', [morph[m].GetBinError(b) for m in morph_masses]))
+        binMorphG[b].SetName("%s%smorphed_bin_%d" % (name,"" if systematic == "" else systematic+"_",b))
+        binMorphG[b].SetTitle("%s Morphed Bin %d" % ("t#bar{t}" if signalType == "tt" else signalType, b) )
+        binMorphG[b].GetXaxis().SetTitle("m_{t} [GeV]")
+        binMorphG[b].GetYaxis().SetTitle("Entries")
+        binMorphG[b].GetYaxis().SetTitleOffset(1.4)
+
+    
+    #print "Done with %s  %s" % (name,systematic[1:])    
+    if not morphRates:
+        for m in morph_masses:
+            morph[m].Scale(rates[int(decimalScaling*172.5)])
+
+
+    return morph,binG,binMorphG,cdfMorph,cdfBinG
+
+
+def avgCdfMorphTemplates(templates, morph_masses, name, title, Neff = 0, precision=1, systematic="", interp = "pol3", morphRates = False, verbosity=1):
+    # Morph using average of forward & backward cdf 
+    global morph, forward_cdfMorph, backward_cdfMorph, forward_cdf, backward_cdf
+    morph = {}
+    forward_fit = {}
+    forward_fitFunc = {}
+    backward_fit = {}
+    backward_fitFunc = {}
+    binG = {}
+    binMorphG = {}
+    rates = {}
+    normalized = {}
+    forward_cdf = {}
+    forward_cdfBinG = {}
+    forward_cdfMorph = {}
+    backward_cdf = {}
+    backward_cdfBinG = {}
+    backward_cdfMorph = {}
+    
+    signalType = name[-2:]
+    nbins = templates[int(172.5 * decimalScaling)].GetNbinsX()
+
+    actual_masses = sorted(templates.keys())
+    if Neff == 0:
+        # Use effective entries from 172.5 template
+        Neff = templates[int(172.5 * decimalScaling)].GetEffectiveEntries()
+
+    if verbosity > 0: print "CDF Morphing  %s  %s with Neff = %d" % (name,systematic[1:],Neff)
+    obs = name[4:-3]
+    for m in actual_masses:
+        if verbosity > 1: print "Now on %s  %s  mt = %.1f" % (name,systematic,m)
+        rates[m] = templates[m].Integral()
+        normalized[m] = templates[m].Clone("__normalized_%s_%s_mt%d" % (name,systematic,m))
+        normalized[m].SetDirectory(0)
+        if not morphRates:
+            normalized[m].Scale(1.0 / rates[m])
+
+        # Create cdf
+        forward_cdf[m]  = normalized[m].GetCumulative(True, "_fw")
+        backward_cdf[m] = normalized[m].GetCumulative(False, "_bw")
+
+    # Morph bins of the cdf
+    for b in xrange(1, nbins+1):
+        binG[b] = TGraphErrors(len(actual_masses), array('d', [m/decimalScaling for m in actual_masses]), array('d', [normalized[m].GetBinContent(b) for m in actual_masses]), array('d', [0.] * len(actual_masses)), array('d', [normalized[m].GetBinError(b) for m in actual_masses]))
+        binG[b].SetName("%s%sbin_%d" % (name, "" if systematic == "" else systematic+"_",b))
+        binG[b].SetTitle("%s  Bin %d" % (obs,b))
+        binG[b].GetXaxis().SetTitle("m_{t} [GeV]")
+        binG[b].GetYaxis().SetTitle("Entries")
+        binG[b].GetYaxis().SetTitleOffset(1.3)
+        
+        forward_cdfBinG[b] = TGraphErrors(len(actual_masses), array('d', [m/decimalScaling for m in actual_masses]), array('d', [forward_cdf[m].GetBinContent(b) for m in actual_masses]), array('d', [0.] * len(actual_masses)), array('d', [forward_cdf[m].GetBinError(b) for m in actual_masses]))
+        forward_cdfBinG[b].SetName("fw_cdf_%s%sbin_%d" % (name, "" if systematic == "" else systematic+"_",b))
+        forward_cdfBinG[b].SetTitle("Forward CDF  %s  Bin %d" % (obs,b))
+        forward_cdfBinG[b].GetXaxis().SetTitle("m_{t} [GeV]")
+        forward_cdfBinG[b].GetYaxis().SetTitle("Entries")
+        forward_cdfBinG[b].GetYaxis().SetTitleOffset(1.3)
+        forward_cdfBinG[b].Draw()
+        forward_fit[b] = forward_cdfBinG[b].Fit(interp, "S"+ ("" if verbosity > 1 else "Q"))
+        forward_fitFunc[b] = forward_cdfBinG[b].GetFunction(interp)
+        forward_errors = array('d', [0.] * len(morph_masses))
+        forward_fit[b].GetConfidenceIntervals(len(morph_masses), 1, 1, array('d', [m/decimalScaling for m in morph_masses]), forward_errors, 2./3., False)
+        
+        backward_cdfBinG[b] = TGraphErrors(len(actual_masses), array('d', [m/decimalScaling for m in actual_masses]), array('d', [backward_cdf[m].GetBinContent(b) for m in actual_masses]), array('d', [0.] * len(actual_masses)), array('d', [backward_cdf[m].GetBinError(b) for m in actual_masses]))
+        backward_cdfBinG[b].SetName("bw_cdf_%s%sbin_%d" % (name, "" if systematic == "" else systematic+"_",b))
+        backward_cdfBinG[b].SetTitle("Backward CDF  %s  Bin %d" % (obs,b))
+        backward_cdfBinG[b].GetXaxis().SetTitle("m_{t} [GeV]")
+        backward_cdfBinG[b].GetYaxis().SetTitle("Entries")
+        backward_cdfBinG[b].GetYaxis().SetTitleOffset(1.3)
+        backward_cdfBinG[b].Draw()
+        backward_fit[b] = backward_cdfBinG[b].Fit(interp, "S"+ ("" if verbosity > 1 else "Q"))
+        backward_fitFunc[b] = backward_cdfBinG[b].GetFunction(interp)
+        backward_errors = array('d', [0.] * len(morph_masses))
+        backward_fit[b].GetConfidenceIntervals(len(morph_masses), 1, 1, array('d', [m/decimalScaling for m in morph_masses]), backward_errors, 2./3., False)
+        for i,m in enumerate(morph_masses):
+            exec('massStr = "%.' + str(precision) + 'f" % (m/decimalScaling)')
+            if m not in forward_cdfMorph:
+                if len(forward_cdf[actual_masses[0]].GetXaxis().GetXbins()) == 0:
+                    forward_cdfMorph[m] = TH1F("__fw_cdf_%s%d%s" % (name,m,systematic), "Forward CDF %s  m_{t} = %s GeV" % (title, massStr), nbins, normalized[actual_masses[0]].GetXaxis().GetXmin(), normalized[actual_masses[0]].GetXaxis().GetXmax())
+                    backward_cdfMorph[m] = TH1F("__bw_cdf_%s%d%s" % (name,m,systematic), "Backward CDF %s  m_{t} = %s GeV" % (title, massStr), nbins, normalized[actual_masses[0]].GetXaxis().GetXmin(), normalized[actual_masses[0]].GetXaxis().GetXmax())
+                else:
+                    forward_cdfMorph[m] = TH1F("__fw_cdf_%s%d%s" % (name,m,systematic), "Forward CDF %s  m_{t} = %s GeV" % (title, massStr), nbins, array('d',normalized[actual_masses[0]].GetXaxis().GetXbins())) 
+                    backward_cdfMorph[m] = TH1F("__bw_cdf_%s%d%s" % (name,m,systematic), "Backward CDF %s  m_{t} = %s GeV" % (title, massStr), nbins, array('d',normalized[actual_masses[0]].GetXaxis().GetXbins())) 
+            forward_cdfMorph[m].SetBinContent(b, forward_fitFunc[b].Eval(m/decimalScaling))
+            backward_cdfMorph[m].SetBinContent(b, backward_fitFunc[b].Eval(m/decimalScaling))
+  
+    
+    # 'Differentiate' back to pdf
+    for i,m in enumerate(morph_masses):
+        if m not in morph:
+            if len(forward_cdf[actual_masses[0]].GetXaxis().GetXbins()) == 0:
+                morph[m] = TH1F("%s%d%s" % (name,m,systematic), "%s  m_{t} = %s GeV" % (title, massStr), nbins, normalized[actual_masses[0]].GetXaxis().GetXmin(), normalized[actual_masses[0]].GetXaxis().GetXmax())
+            else:
+                morph[m] = TH1F("%s%d%s" % (name,m,systematic), "%s  m_{t} = %s GeV" % (title, massStr), nbins, array('d',normalized[actual_masses[0]].GetXaxis().GetXbins())) 
+        
+        # Set bin contents as average of forward and backward
+        morph[m].SetBinContent(1, 0.5 * (forward_cdfMorph[m].GetBinContent(1) + backward_cdfMorph[m].GetBinContent(1) - backward_cdfMorph[m].GetBinContent(2)) )
+        morph[m].SetBinContent(nbins, 0.5 * (forward_cdfMorph[m].GetBinContent(nbins) - forward_cdfMorph[m].GetBinContent(nbins-1) + backward_cdfMorph[m].GetBinContent(nbins)) )
+        for b in xrange(2, nbins):
+            morph[m].SetBinContent(b, 0.5 * (forward_cdfMorph[m].GetBinContent(b) - forward_cdfMorph[m].GetBinContent(b-1) + backward_cdfMorph[m].GetBinContent(b) - backward_cdfMorph[m].GetBinContent(b+1)) )
+        
+        # Set bin errors
+        N = morph[m].Integral()
+        for b in xrange(1, nbins+1):
+            morph[m].SetBinError(b, (morph[m].GetBinContent(b)*N/Neff)**0.5)
+
+    for b in xrange(1, nbins+1):
+        binMorphG[b] = TGraphErrors(len(morph_masses), array('d', [m/decimalScaling for m in morph_masses]), array('d', [morph[m].GetBinContent(b) for m in morph_masses]), array('d', [0.] * len(morph_masses)), array('d', [morph[m].GetBinError(b) for m in morph_masses]))
+        binMorphG[b].SetName("%s%smorphed_bin_%d" % (name,"" if systematic == "" else systematic+"_",b))
+        binMorphG[b].SetTitle("%s Morphed Bin %d" % ("t#bar{t}" if signalType == "tt" else signalType, b) )
+        binMorphG[b].GetXaxis().SetTitle("m_{t} [GeV]")
+        binMorphG[b].GetYaxis().SetTitle("Entries")
+        binMorphG[b].GetYaxis().SetTitleOffset(1.4)
+
+    
+    #print "Done with %s  %s" % (name,systematic[1:])    
+    if not morphRates:
+        for m in morph_masses:
+            morph[m].Scale(rates[int(decimalScaling*172.5)])
+
+
+    return morph,binG,binMorphG,forward_cdfMorph,forward_cdfBinG,backward_cdfMorph,backward_cdfBinG
+
+
+
+def morphTemplates(templates, morph_masses, name, title, precision=1, systematic="", interp = "pol3", morphRates = False, verbosity=1):
     morph = {}
     fit = {}
     fitFunc = {}
@@ -213,7 +434,7 @@ def morphTemplates(templates, morph_masses, name, title, precision=1, systematic
         for i,m in enumerate(morph_masses):
             exec('massStr = "%.' + str(precision) + 'f" % (m/decimalScaling)')
             if m not in morph:
-                if variableBins is None:
+                if len(normalized[actual_masses[0]].GetXaxis().GetXbins()) == 0:
                     morph[m] = TH1F("%s%d%s" % (name,m,systematic), "%s  m_{t} = %s GeV" % (title, massStr), normalized[actual_masses[0]].GetNbinsX(), normalized[actual_masses[0]].GetXaxis().GetXmin(), normalized[actual_masses[0]].GetXaxis().GetXmax())
                 else:
                     morph[m] = TH1F("%s%d%s" % (name,m,systematic), "%s  m_{t} = %s GeV" % (title, massStr), normalized[actual_masses[0]].GetNbinsX(), array('d',normalized[actual_masses[0]].GetXaxis().GetXbins())) 
@@ -244,7 +465,7 @@ def morphTemplates(templates, morph_masses, name, title, precision=1, systematic
 
 
 
-def morphTemplates2D(templates, morph_masses, name, title, systematic="", variableBins = None, interp = "pol3", morphRates = False, verbosity=1):
+def morphTemplates2D(templates, morph_masses, name, title, systematic="", interp = "pol3", morphRates = False, verbosity=1):
     morph = {}
     fit = {}
     fitFunc = {}
@@ -291,21 +512,106 @@ def morphTemplates2D(templates, morph_masses, name, title, systematic="", variab
     return graph2D, fit, errors
 
 
+def applySmoothing(templates, masses, method, methodArgs = None, verbosity=1):
+    # Apply smoothing to templates bin-by-bin
+    # methodArgs will be a dictionary with method args. If None, then use defaults
+    nbins = templates[masses[0]].GetNbinsX()
+    name = templates[masses[0]].GetName().replace(str(masses[0]), "")
 
-def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massMax, deltaMT, rateScaling, observables, recoLvls, interp, outF, bins, makePlots, plotDir, debug, debugOut, includeGraphs, morphRates, useMorphFile, extMorphFile, scaleToNominal, normalize, verbosity=1): 
+    smoothG = {}
+    smoother = {}
+    bins = {}
+    binErr = {}
+    binG = {}
+
+    # Fill lists of bin contents & errors
+    for m in masses:
+        bins[m] = []
+        binErr[m] = []
+        for b in xrange(1,nbins+1):
+            bins[m].append(templates[m].GetBinContent(b))
+            binErr[m].append(templates[m].GetBinError(b))
+
+    for _n,b in enumerate(xrange(1,nbins+1)):
+        # Bin graphs for original templates
+        binG[b] = TGraphErrors(len(masses), array('d', [_m/decimalScaling for _m in masses]), array('d', [bins[m][b-1] for m in masses]), array('d', [0]*len(masses)), array('d', [binErr[m][b-1] for m in masses]) )
+        binG[b].SetName("%s_actual_bin_%d" % (name, b))
+        binG[b].SetTitle("Actual bin %d" % b)
+        binG[b].SetLineColor(kBlue)
+        binG[b].SetLineWidth(2)
+        binG[b].SetMarkerStyle(22)
+        binG[b].SetMarkerColor(kBlue)
+
+        smoother[b] = TGraphSmooth()
+
+        if method.lower() == "lowess":
+            if methodArgs is None:
+                # Default args
+                smoothG[b] = smoother[b].SmoothLowess(binG[b],'')   # Second option is not used
+            else:
+                if _n == 0:
+                    if "span" in methodArgs:
+                        span = methodArgs["span"]
+                    else:
+                        span = 0.67
+                        if verbosity > 1:
+                            print "span not found in methodArgs. Using default value %.2f" % span
+                    
+                    if "iter" in methodArgs:
+                        it = methodArgs["iter"]
+                    else:
+                        it = 3
+                        if verbosity > 1:
+                            print "iter not found in methodArgs. Using default value %d" % it
+                    
+                    if "delta" in methodArgs:
+                        delta = methodArgs["delta"]
+                    else:
+                        delta = 0.
+                        if verbosity > 1:
+                            print "delta not found in methodArgs. Using default value %.2f" % delta
+                smoothG[b] = smoother[b].SmoothLowess(binG[b],'', span, it, delta) 
+                smoothG[b].SetName("%s_smoothed_bin_%d" % (name, b))
+    
+
+    # Apply smoothing corrections to templates
+    for i,m in enumerate(masses):
+        for b in xrange(1,nbins+1):
+            scaling = smoothG[b].GetY()[i] / templates[m].GetBinContent(b)
+            templates[m].SetBinContent(b, scaling * templates[m].GetBinContent(b))
+            templates[m].SetBinError(b, scaling * templates[m].GetBinError(b))
+
+    return binG, smoothG, smoother
+
+
+def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massMax, deltaMT, rateScaling, observables, recoLvls, interp, outF, bins, makePlots, plotDir, debug, debugOut, includeGraphs, morphRates, useNewMorphing, useMorphFile, extMorphFile, useSmoothing, addBinStats, binStatsFixNorm, scaleToNominal, normalize, verbosity=1): 
     binning = None
     if bins != "":
-        binning = eval(bins)
+        _bins = eval(bins)
+        binning = {}
+        for obs in observables:
+            binning[obs] = _bins
         print "Using binning:", binning
+    else:
+        binning = templateBinning
+        print "\nUsing pre-defined binning:"
+        for obs in observables:
+            if obs in binning:
+                print "%s\t" % obs, binning[obs]
+        print ""
+
     # If includedSysts is not an empty string, remove all other systs from systematics dictionary
     if "none" in includedSysts or "None" in includedSysts:
         # No systematics
         #systematics = {"nominal":"hists"}
         systsToRemove = deepcopy(allSystematics)
         for removeSys in systsToRemove:
-            systematics.pop(removeSys+"Up")
-            systematics.pop(removeSys+"Down")
-            
+            try:
+                systematics.pop(removeSys+"Up")
+                systematics.pop(removeSys+"Down")
+            except KeyError:
+                continue
+
         print "No systematics included!"
     elif includedSysts != "":
         systsToRemove = deepcopy(allSystematics)
@@ -323,6 +629,9 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
             print "Only including the following systematics"
             pprint(systematics)
 
+    if morphRates:
+        print "Morphing templates to true rates"
+    
     if scaleToNominal:
         print "Scaling the following systematics to the nominal rate: "
         for _s,_systs in systematicsToScale.items():
@@ -364,6 +673,7 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
     if verbosity > 0: print "Will produce %d morphed templates between %s and %s at %s GeV increments\n" % (len(morph_masses), minstr, maxstr, str(round(deltaMT,precision)))
 
 
+    global templates
     templates = {}
     tt = {}
     tW = {}
@@ -385,7 +695,7 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
 
     print "Observables:",
     for _obs in observables: print (" "+_obs),
-    print "" 
+    print "\n" 
     
     diffSyst = {}   # Ratio of syst/nominal @ mt=172.5 for separate sample systematics
 
@@ -405,7 +715,10 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                 recoObs = "%s_%s" % (reco,obs)  # rec_ptll, etc..
                 if binning is not None:
                     tmp = f.Get("%s_%s" % (recoObs, b)).Clone("__"+b)
-                    templates[b][recoObs] = tmp.Rebin(len(binning)-1, b, array('d',binning))
+                    if obs in binning:
+                        templates[b][recoObs] = tmp.Rebin(len(binning[obs])-1, b, array('d',binning[obs]))
+                    else:
+                        templates[b][recoObs] = tmp.Clone(b)
                     templates[b][recoObs].SetDirectory(0)
                     #templates[b][recoObs].Scale(1., "width")
                 elif cutMin == 0 and cutMax == 0:
@@ -451,9 +764,6 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                             print "Variable binning detected:"
                             print variableBins
                         
-#                if useVariableBinning and binning is None:
-#                    templates[b][recoObs].Scale(1., "width")
-
                 # Rebin
    #             templates[b][recoObs].Rebin(rebin)
         f.Close()
@@ -489,9 +799,13 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
 #                        if s == "TTbar":
 #                            newTemplateName = "tt"
                         _histname = "%s%d%s" % (sample,int(decimalScaling*172.5),"" if syst=="nominal" else "_%s" % syst)
-                        if binning is not None:
+                        if binning is not None: 
                             tmp = f.Get("%s_%s" % (recoObs,fName)).Clone("__"+_histname)
-                            templates[s][syst][recoObs][int(decimalScaling*172.5)] = tmp.Rebin(len(binning)-1, _histname, array('d', binning))
+                            if obs in binning:
+                                templates[s][syst][recoObs][int(decimalScaling*172.5)] = tmp.Rebin(len(binning[obs])-1, _histname, array('d', binning[obs]))
+                            else:
+                                templates[s][syst][recoObs][int(decimalScaling*172.5)] = tmp.Clone(_histname)
+                            
                             templates[s][syst][recoObs][int(decimalScaling*172.5)].SetDirectory(0)
                         elif cutMin == 0 and cutMax == 0:
                             templates[s][syst][recoObs][int(decimalScaling*172.5)] = f.Get("%s_%s" % (recoObs,fName)).Clone(_histname)
@@ -509,8 +823,6 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
 
                         exec('massStr = "%.' + str(precision) + 'f" % (172.5)')
                         templates[s][syst][recoObs][int(decimalScaling*172.5)].SetTitle("%s %s %s  m_{t} = %s GeV" % (reco, obsTitle[obs], "t#bar{t}" if s == "TTbar" else "tW", massStr)) 
-#                        if useVariableBinning and binning is None:
-#                            templates[s][syst][recoObs][int(decimalScaling*172.5)].Scale(1., "width")
 
 
                         # Rate scaling
@@ -529,7 +841,10 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                             _histname = "%s%d%s" % (sample,m,"" if syst=="nominal" else "_%s" % syst)
                             if binning is not None:
                                 tmp = f.Get("%s_%s" % (recoObs,fName)).Clone("__"+_histname)
-                                templates[s][syst][recoObs][m] = tmp.Rebin(len(binning)-1, _histname, array('d', binning))
+                                if obs in binning:
+                                    templates[s][syst][recoObs][m] = tmp.Rebin(len(binning[obs])-1, _histname, array('d', binning[obs]))
+                                else:
+                                    templates[s][syst][recoObs][m] = tmp.Clone(_histname)
                                 templates[s][syst][recoObs][m].SetDirectory(0)
                             elif cutMin == 0 and cutMax == 0:
                                 templates[s][syst][recoObs][m] = f.Get("%s_%s" % (recoObs,fName)).Clone(_histname)
@@ -544,8 +859,6 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                                     templates[s][syst][recoObs][m].SetBinError(_bin, tmp.GetBinError(_bin+cutMin))                            
                             exec('massStr = "%.' + str(precision) + 'f" % (m/decimalScaling)') 
                             templates[s][syst][recoObs][m].SetTitle("%s %s %s  m_{t} = %s GeV" % (reco, obsTitle[obs], "t#bar{t}" if s == "TTbar" else "tW", massStr)) 
-#                            if useVariableBinning and binning is None:
-#                                templates[s][syst][recoObs][m].Scale(1., "width")
                             
 #                            templates[s][syst][recoObs][m] = f.Get("%s_%s" % (recoObs,fName)).Clone("%s%d%s" % (sample,m,"" if syst=="nominal" else "_%s" % syst))
 #                            templates[s][syst][recoObs][m].SetDirectory(0)
@@ -555,6 +868,8 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                             templates[s][syst][recoObs][m].Scale(rateScaling)
         
                     f.Close()
+
+
 
     # Create systematic variations for alternate mass points
     for s in signal:
@@ -635,10 +950,79 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                         for m in masses[s]:
                             templates[s][syst][recoObs][m].Scale(templates[s]["nominal"][recoObs][m].Integral() / templates[s][syst][recoObs][m].Integral())
 
-    
-   
 
-    global tt_BinG, tt_BinMorphG,tttW_morphed
+
+    if useSmoothing:
+        # Create smoothed templates prior to morphing
+        print "Applying smoothing prior to morphing"
+        global originalTemplates, tt_originalBinG, tW_originalBinG, tt_smoothBinG, tW_smoothBinG, tt_smoother, tW_smoother
+        # Save a separate copy of the templates pre-smoothing to originalTemplates
+        # templates dict will now contain smoothed templates
+        originalTemplates = {}
+        tt_originalBinG = {}
+        tW_originalBinG = {}
+        tt_smoothBinG = {}
+        tW_smoothBinG = {}
+        tt_smoother = {}
+        tW_smoother = {}
+        for s in signal:
+            originalTemplates[s] = {}
+            sample = "ttsmooth" if s == "TTbar" else "tWsmooth"
+            for syst, systDir in systematics.iteritems():
+                if syst.find("Up") >= 0:
+                    systType = syst[:syst.find("Up")]
+                elif syst.find("Down") >= 0:
+                    systType = syst[:syst.find("Down")]
+                else:
+                    systType = syst
+
+                if s == "TTbar" and systType in tWOnlySysts: continue
+                if s == "ST_tW" and systType in ttOnlySysts: continue
+
+                originalTemplates[s][syst] = {}
+                if s == "TTbar":
+                    tt_originalBinG[syst] = {}
+                    tt_smoothBinG[syst] = {}
+                    tt_smoother[syst] = {}
+                else:
+                    tW_originalBinG[syst] = {}
+                    tW_smoothBinG[syst] = {}
+                    tW_smoother[syst] = {}
+                
+                for obs in observables:
+                    for reco in recoLvls:
+                        recoObs = "%s_%s" % (reco,obs)
+                        originalTemplates[s][syst][recoObs] = {}
+                        for m in masses[s]:
+                            originalName = templates[s][syst][recoObs][m].GetName()
+                            templates[s][syst][recoObs][m].SetName(originalName.replace("actual","smooth"))
+                            originalTemplates[s][syst][recoObs][m] = templates[s][syst][recoObs][m].Clone(originalName)
+
+                        # Smooth templates in place
+                        if s == "TTbar":
+                            tt_originalBinG[syst][recoObs], tt_smoothBinG[syst][recoObs], tt_smoother[syst][recoObs] = applySmoothing(templates[s][syst][recoObs], masses=masses[s], method="lowess", methodArgs={"span":0.9}, verbosity=verbosity)
+                        else:
+                            tW_originalBinG[syst][recoObs], tW_smoothBinG[syst][recoObs], tW_smoother[syst][recoObs] = applySmoothing(templates[s][syst][recoObs], masses=masses[s], method="lowess", verbosity=verbosity)
+
+#        gROOT.SetBatch(False)
+#        c2 = TCanvas("c2","c2", 1200, 1200)
+#        c2.cd()
+#
+#        testBin = 2
+#        testSyst = "nominal"
+#        tW_smoothBinG[testSyst]['rec_ptll'][testBin].SetLineColor(kRed)
+#        tW_smoothBinG[testSyst]['rec_ptll'][testBin].SetLineWidth(2)
+#        tW_smoothBinG[testSyst]['rec_ptll'][testBin].SetMarkerStyle(23)
+#        tW_smoothBinG[testSyst]['rec_ptll'][testBin].SetMarkerColor(kRed)
+#        tW_originalBinG[testSyst]['rec_ptll'][testBin].SetLineWidth(2)
+#        tW_originalBinG[testSyst]['rec_ptll'][testBin].SetMarkerStyle(22)
+#        tW_originalBinG[testSyst]['rec_ptll'][testBin].SetMarkerColor(kBlue)
+#        tW_originalBinG[testSyst]['rec_ptll'][testBin].Draw("alp")
+#        tW_smoothBinG[testSyst]['rec_ptll'][testBin].Draw("lp same")
+#        sys.exit()
+
+
+    global tt_BinG, tt_BinMorphG,tttW_morphed, tt_morphed,tW_morphed, tt_fw_cdfMorph, tt_bw_cdfMorph, tW_fw_cdfMorph, tW_bw_cdfMorph
     # Create morphed templates for tt, tW
     tt_morphed = {}     # Morphed templates
     tt_BinG = {}        # Per-bin graphs for actual templates
@@ -652,11 +1036,20 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
     tW_G2D = {}
     tW_GFit = {}
     tW_GErrors = {}
+    tt_fw_cdfMorph = {}
+    tW_fw_cdfMorph = {}
+    tt_fw_cdfBinG = {}
+    tW_fw_cdfBinG = {}
+    tt_bw_cdfMorph = {}
+    tW_bw_cdfMorph = {}
+    tt_bw_cdfBinG = {}
+    tW_bw_cdfBinG = {}
 
     tttW_morphed = {}
     tttW_G2D = {}
 
-
+    print "Morphing templates...",
+    sys.stdout.flush()
     for syst in systematics.keys():
         tt_morphed[syst] = {}
         tW_morphed[syst] = {}
@@ -670,6 +1063,21 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
         tW_GFit[syst] = {}
         tt_GErrors[syst] = {}
         tW_GErrors[syst] = {}
+        tt_fw_cdfMorph[syst] = {}
+        tW_fw_cdfMorph[syst] = {}
+        tt_fw_cdfBinG[syst] = {}
+        tW_fw_cdfBinG[syst] = {}
+        tt_bw_cdfMorph[syst] = {}
+        tW_bw_cdfMorph[syst] = {}
+        tt_bw_cdfBinG[syst] = {}
+        tW_bw_cdfBinG[syst] = {}
+
+        if syst.find("Up") >= 0:
+            systType = syst[:syst.find("Up")]
+        elif syst.find("Down") >= 0:
+            systType = syst[:syst.find("Down")]
+        else:
+            systType = syst
 
         for obs in observables:
             for reco in recoLvls:
@@ -685,30 +1093,54 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                         else:
                             tt_morphed[syst][recoObs][_m].Scale(1./tt_morphed[syst][recoObs][_m].Integral())
                 else:
+                    if useNewMorphing:
+                        try:
+                            #tt_morphed[syst][recoObs],tt_BinG[syst][recoObs],tt_BinMorphG[syst][recoObs], tt_fw_cdfMorph[syst][recoObs], tt_fw_cdfBinG[syst][recoObs] = cdfMorphTemplates(templates["TTbar"][syst][recoObs], morph_masses, name=recoObs+"_tt", title = "%s %s t#bar{t}" % (reco, obsTitle[obs]), precision=precision, systematic = "" if syst == "nominal" else "_"+syst, interp=interp, morphRates=morphRates, verbosity=verbosity)
+                            tt_morphed[syst][recoObs],tt_BinG[syst][recoObs],tt_BinMorphG[syst][recoObs],tt_fw_cdfMorph[syst][recoObs], tt_fw_cdfBinG[syst][recoObs],tt_bw_cdfMorph[syst][recoObs], tt_bw_cdfBinG[syst][recoObs] = avgCdfMorphTemplates(templates["TTbar"][syst][recoObs], morph_masses, name=recoObs+"_tt", title = "%s %s t#bar{t}" % (reco, obsTitle[obs]), precision=precision, systematic = "" if syst == "nominal" else "_"+syst, interp=interp, morphRates=morphRates, verbosity=verbosity)
+                        except KeyError:
+                            pass
+                    else:
+                        try:
+                            tt_morphed[syst][recoObs],tt_BinG[syst][recoObs],tt_BinMorphG[syst][recoObs] = morphTemplates(templates["TTbar"][syst][recoObs], morph_masses, name=recoObs+"_tt", title = "%s %s t#bar{t}" % (reco, obsTitle[obs]), precision=precision, systematic = "" if syst == "nominal" else "_"+syst, interp=interp, morphRates=morphRates, verbosity=verbosity)
+                        except KeyError:
+                            pass
+
+                # tW morphing
+                if useNewMorphing:
+                    if systType not in ttOnlySysts:
+                        #tW_morphed[syst][recoObs],tW_BinG[syst][recoObs],tW_BinMorphG[syst][recoObs],tW_fw_cdfMorph[syst][recoObs], tW_fw_cdfBinG[syst][recoObs] = cdfMorphTemplates(templates["ST_tW"][syst][recoObs], morph_masses, name=recoObs+"_tW", title = "%s %s tW" % (reco, obsTitle[obs]), precision=precision, systematic = "" if syst == "nominal" else "_"+syst, interp="pol1", morphRates=morphRates, verbosity=verbosity)
+                        tW_morphed[syst][recoObs],tW_BinG[syst][recoObs],tW_BinMorphG[syst][recoObs],tW_fw_cdfMorph[syst][recoObs], tW_fw_cdfBinG[syst][recoObs],tW_bw_cdfMorph[syst][recoObs], tW_bw_cdfBinG[syst][recoObs] = avgCdfMorphTemplates(templates["ST_tW"][syst][recoObs], morph_masses, name=recoObs+"_tW", title = "%s %s tW" % (reco, obsTitle[obs]), precision=precision, systematic = "" if syst == "nominal" else "_"+syst, interp="pol1", morphRates=morphRates, verbosity=verbosity)
+                        
+#                    try:
+#                        tW_morphed[syst][recoObs],tW_BinG[syst][recoObs],tW_BinMorphG[syst][recoObs],tW_cdfMorph[syst][recoObs] = cdfMorphTemplates(templates["ST_tW"][syst][recoObs], morph_masses, name=recoObs+"_tW", title = "%s %s tW" % (reco, obsTitle[obs]), precision=precision, systematic = "" if syst == "nominal" else "_"+syst, interp="pol1", morphRates=morphRates, verbosity=verbosity)
+#                    except KeyError:        
+#                        pass 
+                else:
                     try:
-                        tt_morphed[syst][recoObs],tt_BinG[syst][recoObs],tt_BinMorphG[syst][recoObs] = morphTemplates(templates["TTbar"][syst][recoObs], morph_masses, name=recoObs+"_tt", title = "%s %s t#bar{t}" % (reco, obsTitle[obs]), precision=precision, systematic = "" if syst == "nominal" else "_"+syst, variableBins=variableBins, interp=interp, morphRates=morphRates, verbosity=verbosity)
+                        tW_morphed[syst][recoObs],tW_BinG[syst][recoObs],tW_BinMorphG[syst][recoObs] = morphTemplates(templates["ST_tW"][syst][recoObs], morph_masses, name=recoObs+"_tW", title = "%s %s tW" % (reco, obsTitle[obs]), precision=precision, systematic = "" if syst == "nominal" else "_"+syst, interp="pol1", morphRates=morphRates, verbosity=verbosity)
                     except KeyError:
                         pass
 
-                try:
-                    tW_morphed[syst][recoObs],tW_BinG[syst][recoObs],tW_BinMorphG[syst][recoObs] = morphTemplates(templates["ST_tW"][syst][recoObs], morph_masses, name=recoObs+"_tW", title = "%s %s tW" % (reco, obsTitle[obs]), precision=precision, systematic = "" if syst == "nominal" else "_"+syst, variableBins=variableBins, interp="pol1", morphRates=morphRates, verbosity=verbosity)
-                except KeyError:
-                    pass
+#                if not useNewMorphing:
+#                    try:
+#                        tt_G2D[syst][recoObs],tt_GFit[syst][recoObs],tt_GErrors[syst][recoObs] = morphTemplates2D(templates["TTbar"][syst][recoObs], morph_masses, name=recoObs+"_tt", title = "%s %s t#bar{t}" % (reco, obsTitle[obs]), systematic = "" if syst == "nominal" else "_"+syst, interp=interp, morphRates=morphRates, verbosity=verbosity)
+#                    except KeyError:
+#                        pass
+#                    
+#                    try:
+#                        tW_G2D[syst][recoObs],tW_GFit[syst][recoObs],tW_GErrors[syst][recoObs] = morphTemplates2D(templates["ST_tW"][syst][recoObs], morph_masses, name=recoObs+"_tW", title = "%s %s tW" % (reco, obsTitle[obs]), systematic = "" if syst == "nominal" else "_"+syst, interp="pol1", morphRates=morphRates, verbosity=verbosity)
+#                    except KeyError:
+#                        pass
 
-                try:
-                    tt_G2D[syst][recoObs],tt_GFit[syst][recoObs],tt_GErrors[syst][recoObs] = morphTemplates2D(templates["TTbar"][syst][recoObs], morph_masses, name=recoObs+"_tt", title = "%s %s t#bar{t}" % (reco, obsTitle[obs]), systematic = "" if syst == "nominal" else "_"+syst, variableBins=variableBins, interp=interp, morphRates=morphRates, verbosity=verbosity)
-                except KeyError:
-                    pass
-                
-                try:
-                    tW_G2D[syst][recoObs],tW_GFit[syst][recoObs],tW_GErrors[syst][recoObs] = morphTemplates2D(templates["ST_tW"][syst][recoObs], morph_masses, name=recoObs+"_tW", title = "%s %s tW" % (reco, obsTitle[obs]), systematic = "" if syst == "nominal" else "_"+syst, variableBins=variableBins, interp="pol1", morphRates=morphRates, verbosity=verbosity)
-                except KeyError:
-                    pass
-
+    print "done"
 
     # Create sum tt+tW templates
     if "TTbar" in signal and "ST_tW" in signal:
+        print "Summing tt and tW templates...",
+        sys.stdout.flush()
         templates["tt+tW"] = {}
+        if useSmoothing:
+            originalTemplates["tt+tW"] = {}
         for syst,systDir in systematics.iteritems():
             
             if syst.find("Up") >= 0:
@@ -719,6 +1151,8 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                 systType = syst
            
             templates["tt+tW"][syst] = {}
+            if useSmoothing:
+                originalTemplates["tt+tW"][syst] = {}
             tttW_morphed[syst] = {}
 
             for obs in observables:
@@ -726,26 +1160,57 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                     recoObs = "%s_%s" % (reco,obs)
                     if not recoObs in templates["tt+tW"][syst]:
                         templates["tt+tW"][syst][recoObs] = {}
+                        if useSmoothing:
+                            originalTemplates["tt+tW"][syst][recoObs] = {}
                     if not recoObs in tttW_morphed[syst]:
                         tttW_morphed[syst][recoObs] = {}
 
                     # Actual tt+tW templates
-                    for m in masses["ST_tW"]:
-                        if systType not in tWOnlySysts:
-                            templates["tt+tW"][syst][recoObs][m] = templates["TTbar"][syst][recoObs][m].Clone(templates["TTbar"][syst][recoObs][m].GetName().replace("ttactual","tttWactual") )
-                            if systType not in ttOnlySysts:
-                                templates["tt+tW"][syst][recoObs][m].Add(templates["ST_tW"][syst][recoObs][m])
+                    if useSmoothing:
+                        for m in masses["ST_tW"]:
+                            if systType not in tWOnlySysts:
+                                templates["tt+tW"][syst][recoObs][m] = templates["TTbar"][syst][recoObs][m].Clone(templates["TTbar"][syst][recoObs][m].GetName().replace("ttsmooth","tttWsmooth") )
+                                if useSmoothing:
+                                    originalTemplates["tt+tW"][syst][recoObs][m] = originalTemplates["TTbar"][syst][recoObs][m].Clone(originalTemplates["TTbar"][syst][recoObs][m].GetName().replace("ttactual","tttWactual") )
+                                if systType not in ttOnlySysts:
+                                    templates["tt+tW"][syst][recoObs][m].Add(templates["ST_tW"][syst][recoObs][m])
+                                    if useSmoothing:
+                                        originalTemplates["tt+tW"][syst][recoObs][m].Add(originalTemplates["ST_tW"][syst][recoObs][m])
+                                else:
+                                    # Add nominal tW
+                                    templates["tt+tW"][syst][recoObs][m].Add(templates["ST_tW"]["nominal"][recoObs][m])
+                                    if useSmoothing:
+                                        originalTemplates["tt+tW"][syst][recoObs][m].Add(originalTemplates["ST_tW"]["nominal"][recoObs][m])
+
                             else:
-                                # Add nominal tW
-                                templates["tt+tW"][syst][recoObs][m].Add(templates["ST_tW"]["nominal"][recoObs][m])
+                                templates["tt+tW"][syst][recoObs][m] = templates["ST_tW"][syst][recoObs][m].Clone(templates["ST_tW"][syst][recoObs][m].GetName().replace("tWsmooth","tttWsmooth") )
+                                # Use nominal tt 
+                                templates["tt+tW"][syst][recoObs][m].Add(templates["TTbar"]["nominal"][recoObs][m])
+                                if useSmoothing:
+                                    originalTemplates["tt+tW"][syst][recoObs][m] = originalTemplates["ST_tW"][syst][recoObs][m].Clone(originalTemplates["ST_tW"][syst][recoObs][m].GetName().replace("tWactual","tttWactual") )
+                                    originalTemplates["tt+tW"][syst][recoObs][m].Add(originalTemplates["TTbar"]["nominal"][recoObs][m])
 
-                        else:
-                            templates["tt+tW"][syst][recoObs][m] = templates["ST_tW"][syst][recoObs][m].Clone(templates["ST_tW"][syst][recoObs][m].GetName().replace("tWactual","tttWactual") )
-                            # Use nominal tt 
-                            templates["tt+tW"][syst][recoObs][m].Add(templates["TTbar"]["nominal"][recoObs][m])
+                            exec('massStr = "%.' + str(precision) + 'f" % (m/decimalScaling)')
+                            templates["tt+tW"][syst][recoObs][m].SetTitle("%s %s %s smoothed  m_{t} = %s GeV" % (reco, obsTitle[obs], "t#bar{t} + tW", massStr))
+                            if useSmoothing:
+                                originalTemplates["tt+tW"][syst][recoObs][m].SetTitle("%s %s %s  m_{t} = %s GeV" % (reco, obsTitle[obs], "t#bar{t} + tW", massStr))
+                    else:
+                        for m in masses["ST_tW"]:
+                            if systType not in tWOnlySysts:
+                                templates["tt+tW"][syst][recoObs][m] = templates["TTbar"][syst][recoObs][m].Clone(templates["TTbar"][syst][recoObs][m].GetName().replace("ttactual","tttWactual") )
+                                if systType not in ttOnlySysts:
+                                    templates["tt+tW"][syst][recoObs][m].Add(templates["ST_tW"][syst][recoObs][m])
+                                else:
+                                    # Add nominal tW
+                                    templates["tt+tW"][syst][recoObs][m].Add(templates["ST_tW"]["nominal"][recoObs][m])
 
-                        exec('massStr = "%.' + str(precision) + 'f" % (m/decimalScaling)')
-                        templates["tt+tW"][syst][recoObs][m].SetTitle("%s %s %s  m_{t} = %s GeV" % (reco, obsTitle[obs], "t#bar{t} + tW", massStr))
+                            else:
+                                templates["tt+tW"][syst][recoObs][m] = templates["ST_tW"][syst][recoObs][m].Clone(templates["ST_tW"][syst][recoObs][m].GetName().replace("tWactual","tttWactual") )
+                                # Use nominal tt 
+                                templates["tt+tW"][syst][recoObs][m].Add(templates["TTbar"]["nominal"][recoObs][m])
+
+                            exec('massStr = "%.' + str(precision) + 'f" % (m/decimalScaling)')
+                            templates["tt+tW"][syst][recoObs][m].SetTitle("%s %s %s  m_{t} = %s GeV" % (reco, obsTitle[obs], "t#bar{t} + tW", massStr))
 
                     # Morphed tt+tW templates (summed after morphing)
                     for m in morph_masses:
@@ -761,7 +1226,39 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
 
                         exec('massStr = "%.' + str(precision) + 'f" % (m/decimalScaling)')
                         tttW_morphed[syst][recoObs][m].SetTitle("%s %s %s  m_{t} = %s GeV" % (reco, obsTitle[obs], "t#bar{t} + tW", massStr))
+    
+        print "done"
     data_obs = {}
+
+
+    if addBinStats and "TTbar" in signal and "ST_tW" in signal:
+        # Add an additional nuisance parameter for each bin
+        print "Adding binwise stat uncertainty nuisance parameters for each signal bin %s" % ("with normalization fixed" if binStatsFixNorm else "without fixing overall normalization")
+        nSigBins = {}
+        for obs in observables:
+            for reco in recoLvls:
+                recoObs = "%s_%s" % (reco,obs)
+                
+                nSigBins[recoObs] = tttW_morphed["nominal"][recoObs][int(decimalScaling*172.5)].GetNbinsX()
+                
+                for _b in xrange(1,nSigBins[recoObs]+1):
+                    if "%s_bin%dUp" % (recoObs,_b) not in tttW_morphed:
+                        tttW_morphed["%s_bin%dUp" % (recoObs,_b)] = {recoObs:{} }
+                        tttW_morphed["%s_bin%dDown" % (recoObs,_b)] = {recoObs:{} }
+
+                    for m in morph_masses:
+                        tttW_morphed["%s_bin%dUp" % (recoObs,_b)][recoObs][m] = tttW_morphed["nominal"][recoObs][m].Clone(tttW_morphed["nominal"][recoObs][m].GetName() + "_bin%dUp" % _b)
+                        tttW_morphed["%s_bin%dDown" % (recoObs,_b)][recoObs][m] = tttW_morphed["nominal"][recoObs][m].Clone(tttW_morphed["nominal"][recoObs][m].GetName() + "_bin%dDown" % _b)
+                        
+                        # Bin up = Nominal + bin_error
+                        tttW_morphed["%s_bin%dUp" % (recoObs,_b)][recoObs][m].SetBinContent(_b, tttW_morphed["nominal"][recoObs][m].GetBinContent(_b) + tttW_morphed["nominal"][recoObs][m].GetBinError(_b))
+                        if binStatsFixNorm:
+                            tttW_morphed["%s_bin%dUp" % (recoObs,_b)][recoObs][m].Scale(tttW_morphed["nominal"][recoObs][m].Integral() / tttW_morphed["%s_bin%dUp" % (recoObs,_b)][recoObs][m].Integral())
+
+                        # Bin down = Nominal - bin_error
+                        tttW_morphed["%s_bin%dDown" % (recoObs,_b)][recoObs][m].SetBinContent(_b, tttW_morphed["nominal"][recoObs][m].GetBinContent(_b) - tttW_morphed["nominal"][recoObs][m].GetBinError(_b))
+                        if binStatsFixNorm:
+                            tttW_morphed["%s_bin%dDown" % (recoObs,_b)][recoObs][m].Scale(tttW_morphed["nominal"][recoObs][m].Integral() / tttW_morphed["%s_bin%dDown" % (recoObs,_b)][recoObs][m].Integral())
 
 
     for obs in observables:
@@ -812,6 +1309,13 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
             #outFile.mkdir("ttbins")
             #outFile.mkdir("tWbins")
             data_obs[recoObs].Write()
+
+            if addBinStats:
+                for _b in xrange(1,nSigBins[recoObs]+1):
+                    for m in morph_masses:
+                        tttW_morphed["%s_bin%dUp" % (recoObs,_b)][recoObs][m].Write(tttW_morphed["%s_bin%dUp" % (recoObs,_b)][recoObs][m].GetName()[len(recoObs)+1:] )
+                        tttW_morphed["%s_bin%dDown" % (recoObs,_b)][recoObs][m].Write(tttW_morphed["%s_bin%dDown" % (recoObs,_b)][recoObs][m].GetName()[len(recoObs)+1:] )
+
             for syst in systematics.keys():
                 if syst.find("Up") >= 0:
                     systType = syst[:syst.find("Up")]
@@ -855,12 +1359,18 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                 if "TTbar" in signal and "ST_tW" in signal:
                     for m in masses["ST_tW"]:
                         templates["tt+tW"][syst][recoObs][m].Write()
+                        if useSmoothing:
+                            originalTemplates["tt+tW"][syst][recoObs][m].Write()
+
 
                 for s in signal:
                     if s == "TTbar" and systType in tWOnlySysts: continue
                     if s == "ST_tW" and systType in ttOnlySysts: continue
                     for m in masses[s]:
                         templates[s][syst][recoObs][m].Write()
+                        if useSmoothing:
+                            originalTemplates[s][syst][recoObs][m].Write()
+                            
 #                        try:
 #                            templates[s][syst][recoObs][m].Write()
 #                        except KeyError:
@@ -903,16 +1413,40 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                     try:
                         for b in xrange(1, tt_morphed[syst][recoObs][morph_masses[0]].GetNbinsX()+1):
                             l = TLegend(0.425, 0.8, 0.575, 0.9)
+                            l.SetFillStyle(0)
+                            l.SetBorderSize(0)
                             tt_BinMorphG[syst][recoObs][b].SetFillColor(0)
                             tt_BinG[syst][recoObs][b].SetFillColor(0)
                             tt_BinG[syst][recoObs][b].SetLineWidth(2)
-                            tt_BinMorphG[syst][recoObs][b].Draw("ALP")
-                            tt_BinG[syst][recoObs][b].SetLineColor(kBlue)
-                            tt_BinG[syst][recoObs][b].Draw("LP SAME")
+                            #tt_BinMorphG[syst][recoObs][b].Draw("ALP")
+                            if useSmoothing:
+                                tt_originalBinG[syst][recoObs][b].SetLineColor(kBlue)
+                                tt_originalBinG[syst][recoObs][b].SetFillColor(0)
+                                tt_originalBinG[syst][recoObs][b].SetLineWidth(2)
+                                #tt_originalBinG[syst][recoObs][b].Draw("LP SAME")
+                                tt_originalBinG[syst][recoObs][b].Draw("ALP")
+                                tt_originalBinG[syst][recoObs][b].SetTitle("t#bar{t} Morphed Bin %d" % b)
+                                tt_originalBinG[syst][recoObs][b].GetXaxis().SetTitle(tt_BinG[syst][recoObs][b].GetXaxis().GetTitle())
+                                tt_originalBinG[syst][recoObs][b].GetXaxis().SetTitleOffset(tt_BinG[syst][recoObs][b].GetXaxis().GetTitleOffset())
+                                tt_originalBinG[syst][recoObs][b].GetYaxis().SetTitle(tt_BinG[syst][recoObs][b].GetYaxis().GetTitle())
+                                tt_originalBinG[syst][recoObs][b].GetYaxis().SetTitleOffset(tt_BinG[syst][recoObs][b].GetYaxis().GetTitleOffset())
+
+                                tt_BinMorphG[syst][recoObs][b].Draw("LP SAME")
+                                tt_BinG[syst][recoObs][b].SetLineColor(kGreen+1)
+                                tt_BinG[syst][recoObs][b].SetMarkerStyle(23)
+                                tt_BinG[syst][recoObs][b].SetMarkerColor(kGreen+1)
+                                tt_BinG[syst][recoObs][b].Draw("LP SAME")
+                                l.AddEntry(tt_originalBinG[syst][recoObs][b], "Actual")
+                                l.AddEntry(tt_BinG[syst][recoObs][b], "Smoothed")
+                                l.AddEntry(tt_BinMorphG[syst][recoObs][b], "Morphed")
+                            else:
+                                tt_BinG[syst][recoObs][b].SetLineColor(kBlue)
+                                #tt_BinG[syst][recoObs][b].Draw("LP SAME")
+                                tt_BinG[syst][recoObs][b].Draw("ALP")
+                                tt_BinMorphG[syst][recoObs][b].Draw("LP SAME")
+                                l.AddEntry(tt_BinG[syst][recoObs][b], "Actual")
+                                l.AddEntry(tt_BinMorphG[syst][recoObs][b], "Morphed")
                             fit = tt_BinG[syst][recoObs][b].Fit(interp, "S" if verbosity > 1 else "SQ")
-                            l.AddEntry(tt_BinMorphG[syst][recoObs][b], "Morphed")
-                            l.AddEntry(tt_BinG[syst][recoObs][b], "Actual")
-                            l.SetFillStyle(0)
                             l.Draw("SAME")
                             os.system("mkdir -p %s/%s/%s" % (plotDir,recoObs,syst))
                             c.SaveAs("%s/%s/%s/tt_morph_bin_%d.png" % (plotDir,recoObs,syst,b))
@@ -922,16 +1456,30 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
                     try:
                         for b in xrange(1, tW_morphed[syst][recoObs][morph_masses[0]].GetNbinsX()+1):
                             l = TLegend(0.425, 0.8, 0.575, 0.9)
+                            l.SetFillStyle(0)
+                            l.SetBorderSize(0)
                             tW_BinMorphG[syst][recoObs][b].SetFillColor(0)
                             tW_BinG[syst][recoObs][b].SetFillColor(0)
                             tW_BinG[syst][recoObs][b].SetLineWidth(2)
                             tW_BinMorphG[syst][recoObs][b].Draw("ALP")
-                            tW_BinG[syst][recoObs][b].SetLineColor(kBlue)
-                            tW_BinG[syst][recoObs][b].Draw("LP SAME")
+                            if useSmoothing:
+                                tW_originalBinG[syst][recoObs][b].SetLineColor(kBlue)
+                                tW_originalBinG[syst][recoObs][b].SetFillColor(0)
+                                tW_originalBinG[syst][recoObs][b].SetLineWidth(2)
+                                tW_originalBinG[syst][recoObs][b].Draw("LP SAME")
+                                tW_BinG[syst][recoObs][b].SetLineColor(kGreen+1)
+                                tW_BinG[syst][recoObs][b].SetMarkerStyle(23)
+                                tW_BinG[syst][recoObs][b].SetMarkerColor(kGreen+1)
+                                tW_BinG[syst][recoObs][b].Draw("LP SAME")
+                                l.AddEntry(tW_originalBinG[syst][recoObs][b], "Actual")
+                                l.AddEntry(tW_BinG[syst][recoObs][b], "Smoothed")
+                                l.AddEntry(tW_BinMorphG[syst][recoObs][b], "Morphed")
+                            else:
+                                tW_BinG[syst][recoObs][b].SetLineColor(kBlue)
+                                tW_BinG[syst][recoObs][b].Draw("LP SAME")
+                                l.AddEntry(tW_BinG[syst][recoObs][b], "Actual")
+                                l.AddEntry(tW_BinMorphG[syst][recoObs][b], "Morphed")
                             fit = tW_BinG[syst][recoObs][b].Fit("pol1", "S" if verbosity > 1 else "SQ")
-                            l.AddEntry(tW_BinMorphG[syst][recoObs][b], "Morphed")
-                            l.AddEntry(tW_BinG[syst][recoObs][b], "Actual")
-                            l.SetFillStyle(0)
                             l.Draw("SAME")
                             os.system("mkdir -p %s/%s/%s" % (plotDir,recoObs,syst))
                             c.SaveAs("%s/%s/%s/tW_morph_bin_%d.png" % (plotDir,recoObs,syst,b))
@@ -950,7 +1498,9 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
             pickle.dump(tW_GFit, f, protocol=pickle.HIGHEST_PROTOCOL)
             pickle.dump(tW_GErrors, f, protocol=pickle.HIGHEST_PROTOCOL)
             pickle.dump(diffSyst, f, protocol=pickle.HIGHEST_PROTOCOL)
-        print "Debugging info saved to %s\n" % debugOut 
+        print "Debugging info saved to %s\n" % debugOut
+
+    sys.stdout.flush()
     return templates,tt_morphed,tW_morphed,tt_G2D,tt_GFit,tt_GErrors,diffSyst
 
 #    for sys,sys_weight in systematics.items():
@@ -1011,7 +1561,7 @@ def create_templates(inDir, includedSysts, rebin, cutMin, cutMax, massMin, massM
 #    return ttG2D,ttGFit,ttGerrors
 
 
-if __name__ == "__main__":
+def main():
     parser = ArgumentParser()
     parser.add_argument("--topDir", default="/uscms_data/d3/msaunder/TopMass/CMSSW_8_0_26_patch1/src/TopNtuplizer/Plotting", help="path to Plotting directory")
     parser.add_argument("-i", dest="inDir", default="histograms", help="Input directory containing ttrees")
@@ -1026,19 +1576,23 @@ if __name__ == "__main__":
     parser.add_argument("--maxmt", type=float, default=178.5, help="maximum mass for morphing range")
     parser.add_argument("--deltaMT", type=float, default=0.1, help="morphing mass increment (in GeV)") 
     parser.add_argument("--normalize", action="store_true", default=False, help="normalize to unity") 
-    parser.add_argument("--morphRates", action="store_true", default=False, help="interpolate non-normalized histograms")
+    parser.add_argument("--noMorphRates", action="store_true", default=False, help="interpolate non-normalized histograms")
     parser.add_argument("--noScalingToNominal", action="store_true", default=False, help="don't scale certain systematics to the nominal rate")
+    parser.add_argument("--useNewMorphing", action="store_true", default=False, help="use new morphing method")
     parser.add_argument("--useMorphFile", action="store_true", default=False, help="use morphed templates from external file instead of doing morphing here")
     parser.add_argument("--extMorphFile", default="/uscms/homes/m/msaunder/work/DNN_TemplateMorphing/new/newplots/morphTF.root", help="external morph template file loaded when useMorphFile option is selected")
     parser.add_argument("-r", "--rateScaling", type=float, default=1., help="scale rates by a constant factor")
 #    parser.add_argument("--bins", type=str, default="[0, 15, 30, 45, 60, 70, 80, 90, 100, 110, 120, 130, 140]", help="List of variable bin ranges. The last entry is the upper edge of the last bin. All other entries are the lower bin edges")
+    parser.add_argument("--smooth", action="store_true", default=False, help="apply template smoothing")
     parser.add_argument("--bins", type=str, default="", help="List of variable bin ranges. The last entry is the upper edge of the last bin. All other entries are the lower bin edges")
+    parser.add_argument("--noBinStats", action="store_true", default=False, help="don't add binwise stat unc nps")
+    parser.add_argument("--binStatsFixNorm", action="store_true", default=False, help="when computing binwise stats, adjust other bin contents to preserve the overall normalization")
     parser.add_argument("--newErrors", action="store_true", default=False, help="use new error method")
     parser.add_argument("--precision", type=int, default=1, help="number of decimal places to use for morphing")
-    parser.add_argument("--obs", nargs="+", default=['ptll'], choices=(_observables + ["all","diff"]), help="include these observables (or 'all' for all 6)")
+    parser.add_argument("--obs", nargs="+", default=['ptll'], choices=(_observables + ["kin","all","diff"]), help="include these observables (or 'all' for all 6)")
     parser.add_argument("--reco", nargs="+", default=["rec"], choices=["rec","gen"], help="reco lvl")
     parser.add_argument("--interp", default="pol3", help="ttbar interpolation function to use in ROOT Fit")
-    parser.add_argument("--plots", action = "store_true", help="create bin plots")
+    parser.add_argument("--plots", action = "store_true", default=False, help="create bin plots")
     parser.add_argument("--plotDir", default="", help="directory to store bin plots if --plots is selected")
     parser.add_argument("--includeGraphs", action="store_true", default=False, help="Store per-bin graphs in output root file")
     parser.add_argument("-v", "-V", "--verbosity", dest="verbosity", type=int, default=0, help="verbosity of output")
@@ -1047,9 +1601,21 @@ if __name__ == "__main__":
     scaleToNominal = not args.noScalingToNominal
     if "all" in args.obs:
         # Include all observables
+        print "All observables selected"
         args.obs = _observables
+    elif "kin" in args.obs:
+        print "Kinematic observables selected"
+        args.obs = ["ptll","Mll","Epos","ptpos","Ep_Em","ptp_ptm"]
     elif "diff" in args.obs:
+        print "Differential observables selected"
         args.obs = _diffDists
+
+    if args.useNewMorphing:
+        print "Using new morphing method"
+
+    useSmoothing = args.smooth
+    if useSmoothing:
+        print "Template smoothing will be applied"
 
     if args.precision < 0:
         print "Cannot have %d decimal places! Defaulting to 1" % args.precision
@@ -1078,6 +1644,11 @@ if __name__ == "__main__":
         else:
             args.plotDir = "binPlots"
 
+    morphRates = not args.noMorphRates
+    if args.noMorphRates:
+        print "Templates will be morphed using normalized templates then scaled to nominal 172.5 template rate"
+
+
     global precision,decimalScaling
     precision = args.precision          # Number of decimal places 
     decimalScaling = 10**precision     # Scaling such that the specified precision can be represented by integers
@@ -1101,6 +1672,9 @@ if __name__ == "__main__":
     
     # Create a set of templates for the given ttres and config 
     #ttG2D,ttGFit,ttGerrors = create_templates(inDir=args.inDir, rebin=args.rebin, interp=args.interp, outF=args.outF, makePlots=args.plots, plotDir=args.plotDir)
-    templates,tt_morphed,tW_morphed,tt_G2D,tt_GFit,tt_GErrors, diffSyst = create_templates(inDir="%s/%s" % (args.topDir,args.inDir), includedSysts=args.systs, cutMin=args.cutMin, cutMax=args.cutMax, massMin=args.minmt, massMax=args.maxmt, deltaMT=args.deltaMT, rateScaling=args.rateScaling, observables=args.obs, recoLvls=args.reco, rebin=args.rebin, bins=args.bins, interp=args.interp, outF=args.outF, makePlots=args.plots, plotDir=args.plotDir, debug=args.debug, debugOut=args.debugOut, includeGraphs=args.includeGraphs, morphRates=args.morphRates, useMorphFile=args.useMorphFile, extMorphFile=args.extMorphFile, scaleToNominal=scaleToNominal,normalize=args.normalize,verbosity=args.verbosity)
+    templates,tt_morphed,tW_morphed,tt_G2D,tt_GFit,tt_GErrors, diffSyst = create_templates(inDir="%s/%s" % (args.topDir,args.inDir), includedSysts=args.systs, cutMin=args.cutMin, cutMax=args.cutMax, massMin=args.minmt, massMax=args.maxmt, deltaMT=args.deltaMT, rateScaling=args.rateScaling, observables=args.obs, recoLvls=args.reco, rebin=args.rebin, bins=args.bins, interp=args.interp, outF=args.outF, makePlots=args.plots, plotDir=args.plotDir, debug=args.debug, debugOut=args.debugOut, includeGraphs=args.includeGraphs, morphRates=morphRates, useNewMorphing=args.useNewMorphing, useMorphFile=args.useMorphFile, extMorphFile=args.extMorphFile, useSmoothing=useSmoothing, addBinStats=(not args.noBinStats), binStatsFixNorm=args.binStatsFixNorm, scaleToNominal=scaleToNominal,normalize=args.normalize,verbosity=args.verbosity)
 
+    return
 
+if __name__ == "__main__":
+    sys.exit(main())
