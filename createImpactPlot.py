@@ -33,18 +33,22 @@ parser.add_argument('-p', '--POI', dest="POI", default="MT", help="parameter of 
 parser.add_argument('--translate', '-t', help='JSON file for remapping of parameter names')
 parser.add_argument('--units', default=None, help='Add units to the best-fit parameter value')
 parser.add_argument('--per-page', type=int, default=100, help='Number of parameters to show per page')
+parser.add_argument("--mergeBinStats", action="store_true", default=False, help="combine bin stat uncertainties into one parameter")
 #parser.add_argument('--cms-label', default='Internal', help='Label next to the CMS logo')
 parser.add_argument("--ignoreGenerators", action="store_true", default=False, help="ignore MC generator systematics")
+parser.add_argument("--unc", "--uncDisplay", dest="uncDisplay", choices=["total","syststat", "both"], default="syststat", help="display total fit unc, split by syst + stat, or both")
 parser.add_argument("--splitUnc", action="store_true", default=False, help="display stat/syst breakdown")
 parser.add_argument('--cms-label', default='Work in Progress', help='Label next to the CMS logo')
 parser.add_argument('--transparent', action='store_true', help='Draw areas as hatched lines instead of solid')
 parser.add_argument('--color-groups', default=None, help='Comma separated list of GROUP=COLOR')
 args = parser.parse_args()
 
+mergeBinStats = args.mergeBinStats
 
 canvasW = 700
 canvasH = 600
 
+statUnc = 0.0
 #canvasW = 1400
 #canvasH = 1200
 
@@ -87,6 +91,7 @@ decimalScaling = 10**precision
 POI_fit = data['POIs'][selectedPOI]['fit']
 # Fit uncertainty
 
+nbinstats = 0
 paramsToRemove = []
 # Sort parameters by largest absolute impact on this POI
 data['params'].sort(key=lambda x: abs(x['impact_%s' % POIs[selectedPOI]]), reverse=True)
@@ -99,15 +104,70 @@ if args.POI == "MT":
         if args.ignoreGenerators and data[u'params'][p]["name"] in generator_systs: 
             print "Skipping parameter %d: %s" % (p, data[u'params'][p]["name"])
             paramsToRemove.append(p)
+        if data[u'params'][p]["name"] == u'stat' or data[u'params'][p]["name"] == u'MCbinStats':
+            paramsToRemove.append(p)
+        elif mergeBinStats and data[u'params'][p]["name"][:3] == "bin":
+            paramsToRemove.append(p)
+            nbinstats += 1
         data[u'params'][p][u'impact_MT'] /= decimalScaling
         for v,mt in enumerate(data[u'params'][p][u'MT']):
             data[u'params'][p][u'MT'][v] = mt/decimalScaling
 
-for i,p in enumerate(sorted(paramsToRemove)):
-    print "Removing %s" % data[u'params'][p-i]["name"]
-    data[u'params'].pop(p-i)    # List position will get shifted each time a param is popped
+if nbinstats > 0:
+    print "Found %d bin stat uncertainties" % nbinstats
 
+mtfit = POI_fit[1]
+
+print "nominal mt fit:", mtfit 
 fitUnc = (POI_fit[2] - POI_fit[0]) / 2
+given_MCbinStatUnc = 0.
+MCbinStatUnc = 0.
+MCbinStatUncUp = 0.
+MCbinStatUncDn = 0.
+
+for i,p in enumerate(sorted(paramsToRemove)):
+    print "Removing %s from list" % data[u'params'][p-i]["name"]
+    if data[u'params'][p-i]["name"] == u'stat':
+        statUnc = (fitUnc**2 - data[u'params'][p-i][u'impact_MT']**2)**0.5
+        print "Found stat uncertainty: %.3f" % statUnc
+    elif data[u'params'][p-i]["name"] == u'MCbinStats':
+        given_MCbinStatUnc = (fitUnc**2 - data[u'params'][p-i][u'impact_MT']**2)**0.5
+        print "Found MC bin stat uncertainty: %.3f" % given_MCbinStatUnc
+    elif data[u'params'][p-i]["name"][:3] == u'bin':
+        up = data[u'params'][p-i][u'MT'][2] - data[u'params'][p-i][u'MT'][1]
+        dn = data[u'params'][p-i][u'MT'][1] - data[u'params'][p-i][u'MT'][0]
+        MCbinStatUncUp += up**2
+        MCbinStatUncDn += dn**2
+        #print data[u'params'][p-i]["name"]
+        print "Found MC bin %d unc: -%.3f/+%.3f" % (int(data[u'params'][p-i]["name"][3:]), dn,up)
+
+    data[u'params'].pop(p-i)    # List position will get shifted each time a param is popped
+        
+        
+MCbinStatUncUp = MCbinStatUncUp**0.5
+MCbinStatUncDn = MCbinStatUncDn**0.5
+
+# [ -sigma, nominal, +sigma ]
+mtMCBS = [mtfit-MCbinStatUncDn, mtfit, mtfit + MCbinStatUncUp]
+
+if mergeBinStats:
+    # Add a MCbinStats parameter to the data dictionary
+    # TODO: Use realistic pull of MCbinStats
+    data[u'params'].append({\
+        u'name': u'MCbinStats',
+        u'type': "Gaussian",
+        u'MT': mtMCBS,
+        u'impact_MT': max(abs(MCbinStatUncUp), abs(MCbinStatUncDn)),
+        u'impact_r': 0.0,
+        u'prefit': [-1.0, 0.0, 1.0],
+        u'fit': [ -1.0, 0.0, 1.0],
+        u'groups': [],
+        u'r': [1.0, 1.0, 1.0]
+        })
+
+    # Sort again
+    data['params'].sort(key=lambda x: abs(x['impact_%s' % POIs[selectedPOI]]), reverse=True)
+
 # Set the number of parameters per page (show) and the number of pages (n)
 show = args.per_page
 n = int(math.ceil(float(len(data['params'])) / float(show)))
@@ -243,12 +303,12 @@ for page in xrange(n):
             pass
 
     thUnc += CR_unc**2
-    statUnc = fitUnc**2
+#    statUnc = fitUnc**2
     
     mcStatUnc = 0.
     for syst, vals in impacts.items():
         maxImpact = max(abs(vals['hi']), abs(vals['lo']))
-        statUnc -= maxImpact**2
+#        statUnc -= maxImpact**2
         if syst in CR_systs: continue
         if syst in experimentalSysts:
             expUnc += maxImpact**2
@@ -260,7 +320,8 @@ for page in xrange(n):
             print "%s not a theory or experimental uncertainty!" % syst
 
     mcStatUnc = mcStatUnc**0.5
-    systUnc = (expUnc + thUnc)**0.5
+#    systUnc = (expUnc + thUnc)**0.5
+    systUnc = (fitUnc**2 - statUnc**2)**0.5
     expUnc = expUnc**0.5
     thUnc = thUnc**0.5
     #statUnc = statUnc**0.5
@@ -270,13 +331,15 @@ for page in xrange(n):
 #        statUnc = (fitUnc**2 - systUnc**2)**0.5
 
 
-    print " Fit unc: %.3f" % fitUnc
+    print "\n Fit unc: %.3f" % fitUnc
     print "----------------"
-    print " Exp unc: %.3f" % expUnc
-    print "  Th unc: %.3f" % thUnc
-    print "  MC unc: %.3f" % mcStatUnc 
+#    print " Exp unc: %.3f" % expUnc
+#    print "  Th unc: %.3f" % thUnc
+    print "  MC unc (summed): %.3f" % mcStatUnc 
     print "----------------"
-    print " Sys tot: %.3f" % systUnc
+#    print "  MC unc (fit): %.3f" % MCbinStatUnc 
+#    print "----------------"
+    print " Sys unc: %.3f" % systUnc
     print "----------------"
     print "Stat unc: %.3f" % statUnc
 
@@ -355,18 +418,22 @@ for page in xrange(n):
 
     #plot.DrawCMSLogo(pads[0], 'CMS', args.cms_label, 0, 0.25, 0.00, 0.00)
     if args.POI == "MT":
-        if args.splitUnc:
+        if args.splitUnc or args.uncDisplay == "syststat":
             plot.DrawTitle(pads[1], "#hat{%s} = %.2f #pm %.2f(stat) #pm %.2f(syst)%s" % (
                 Translate("m_{ t}", translate), POI_fit[1], statUnc, systUnc,
-                '' if args.units is None else ' '+args.units), 3)
+                '' if args.units is None else ' '+args.units),3)
+        elif args.uncDisplay == "both":
+            plot.DrawTitle(pads[1], "#hat{%s} = %.2f #pm %.2f (%.2f(stat) #pm %.2f(syst)%s)" % (
+                Translate("m_{ t}", translate), POI_fit[1], (POI_fit[2] - POI_fit[0]) / 2.,statUnc, systUnc,
+                '' if args.units is None else ' '+args.units),3)
         else:
-            plot.DrawTitle(pads[1], "#hat{%s} = %.3f #pm %.3f%s" % (
+            plot.DrawTitle(pads[1], "#hat{%s} = %.2f #pm %.2f%s" % (
                 Translate("m_{ t}", translate), POI_fit[1], (POI_fit[2] - POI_fit[0]) / 2.,
-                '' if args.units is None else ' '+args.units), 3)
+                '' if args.units is None else ' '+args.units),3)
     else:
-        plot.DrawTitle(pads[1], "#hat{%s} = %.3g #pm %.3g%s" % (
+        plot.DrawTitle(pads[1], "#hat{%s} = %.2g #pm %.2g%s" % (
             Translate(POIs[selectedPOI], translate), POI_fit[1], (POI_fit[2] - POI_fit[0]) / 2.,
-            '' if args.units is None else ' '+args.units), 3)
+            '' if args.units is None else ' '+args.units),3)
     extra = ''
     if page == 0:
         extra = '('
@@ -374,3 +441,14 @@ for page in xrange(n):
         extra = ')'
     canv.Print('.pdf%s' % extra)
     #canv.Print('.png%s' % extra)
+
+# Output file for debugging info
+debugFile = args.input.replace(".json",".debug")
+#if not os.path.exists(debugFile):
+#    with open(debugFile, "w") as f:
+#        f.write("NumSysts\tNumMCBinStats\tfitUnc\tstatUnc\tsystUnc\n")
+with open(debugFile,"w") as f:
+        f.write("NumSysts\tNumMCBinStats\tMCUnc\tstatUnc\tsystUnc\tfitUnc\n")
+        f.write("%d\t\t\t%d\t\t\t\t%.3f\t%.3f\t%.3f\t%.3f\n" % (len(data['params']), nbinstats, mcStatUnc, statUnc, systUnc, fitUnc))
+    
+    

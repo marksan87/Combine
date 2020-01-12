@@ -62,15 +62,17 @@ parser.add_argument("--cut", default=0, type=int, help="upper cut for name only"
 parser.add_argument("-b", "--rebin", default=1, type=int, help="rebin in increments of 2 GeV")
 parser.add_argument("--obs", default="ptll", choices=observables, help="observable to plot")
 parser.add_argument("-a", "--useActual", action="store_true", default=False, help="use actual templates instead of morphed templates")
-parser.add_argument("--noScaling", action="store_true", default=False, help="don't normalize templates to unity")
+parser.add_argument("--norm", action="store_true", default=False, help="don't normalize templates to unity")
 parser.add_argument("--deltaMT", type=float, default=0.1, help="mass scan delta")
 parser.add_argument("--precision", type=int, default=1, help="decimals of precision")
 parser.add_argument("--minmt", type=float, default=166.5, help="min mt of scan range")
 parser.add_argument("--maxmt", type=float, default=178.5, help="max mt of scan range")
+parser.add_argument("-c", "--color", default="kRed", help="color of mt distribution")
 parser.add_argument("-p", "--percentDiff", action="store_true", default=False, help="use percent difference instead of ratio")
 parser.add_argument("-d", "--saveDebugFrames", action="store_true", default=False, help="save the frame temp directory")
 parser.add_argument("--syst", default="", help="systematic to plot")
 parser.add_argument("-o", "--outF", default="", help="output mass scan gif file")
+
 
 try:
     args = parser.parse_args()
@@ -78,6 +80,10 @@ except:
     # Print usage
     parser.print_help()
     sys.exit()
+
+exec("color=%s" % (args.color))
+
+normalize = args.norm
 
 if args.precision < 0:
     print "Cannot have %d decimal places! Defaulting to 1" % args.precision
@@ -127,7 +133,6 @@ else:
     #masses = [1665 + i for i in xrange(121)]
     masses = morph_masses 
 
-
 nominalMt = int(172.5*decimalScaling)
 hists = {}
 up = {}
@@ -150,7 +155,7 @@ for m in masses:
     hists[m].SetLineWidth(2)
 
 
-    if not args.noScaling:
+    if normalize: 
         hists[m].Scale(1./hists[m].Integral())
     if args.rebin > 1:
         hists[m].Rebin(args.rebin)
@@ -165,7 +170,7 @@ for m in masses:
         up[m].SetDirectory(0)
         up[m].SetLineColor(kRed)
         up[m].SetLineWidth(2)
-        if not args.noScaling:
+        if normalize: 
             up[m].Scale(1./up[m].Integral())
         maxY = max(up[m].GetMaximum(), maxY)
         
@@ -174,7 +179,7 @@ for m in masses:
             down[m].SetDirectory(0)
             down[m].SetLineColor(kBlue)
             down[m].SetLineWidth(2)
-            if not args.noScaling:
+            if normalize: 
                 down[m].Scale(1./down[m].Integral())
             maxY = max(down[m].GetMaximum(), maxY)
         
@@ -201,6 +206,7 @@ else:
         nextBinW = hist.GetBinCenter(_bin+1) - hist.GetBinCenter(_bin)
         if abs(binW - nextBinW) > 1e-4:
             # Variable binning detected
+            print "Variable binning found!"
             useVariableBinning = True
             # Don't rebin if variable binning:
             rebin=1
@@ -211,6 +217,13 @@ if useVariableBinning:
     variableBins = [_bins[_b] for _b in xrange(len(_bins))]
 #    print "Variable binning detected:"
 #    print variableBins
+
+    for m in masses:
+        hists[m].Scale(1., "width")
+        if args.syst != "":
+            up[m].Scale(1., "width")
+            if m in down:
+                down[m].Scale(1., "width")
 else:
     binW = hists[masses[0]].GetBinCenter(2) - hists[masses[0]].GetBinCenter(1)
         
@@ -334,7 +347,7 @@ for m in masses:
     hists[nominalMt].SetLineColor(kBlack)
     hists[m].Draw("hist e9")
     if args.syst == "":# and m != nominalMt:
-        hists[m].SetLineColor(kMagenta)
+        hists[m].SetLineColor(color)
     
     exec('massStr = "%.' + str(precision) + 'f" % (float(m)/decimalScaling)')
     hists[m].SetTitle("%s %s %s%s  %s  m_{t} = %s GeV" % ("t#bar{t}" if args.sig == "tt" else args.sig,args.reco, obsTitle[args.obs], "" if args.syst == "" else " %s" % args.syst, "actual" if args.useActual else "morphed", massStr) )
@@ -382,7 +395,7 @@ for m in masses:
     #    ratioUp[m].Divide(hists[nominalMt])
 
         # Ratio plot lables
-        ratioUp[m].SetLineColor(kMagenta)
+        ratioUp[m].SetLineColor(color)
         ratioUp[m].SetTitle("")
         ratioUp[m].GetXaxis().SetTitleSize(0.1)
         #print "ratioUp[m].GetXaxis().GetTitleSize() = %.2f" % ratioUp[m].GetXaxis().GetTitleSize()
@@ -458,7 +471,7 @@ print "done!"
 
 
 
-print "Creating gif %s..." % args.outF,
+print "Creating gif %s ..." % args.outF,
 sys.stdout.flush()
 
 #command = "convert -loop 0 -delay %d @file.tx -delay 200 tmp_%d.png %s" % (150 if args.useActual else 15, len(masses)-1, args.outF)

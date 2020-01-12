@@ -6,13 +6,16 @@ import sys
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
-parser.add_argument("-i", "--inF", nargs="+", help="input toy root file(s)")
+parser.add_argument("-i", "--inF", default="submissionScripts/interactive/higgsCombine_paramFit_Test_bin1.MultiDimFit.mH125.123456.root", help="input toy root file(s)")
 parser.add_argument("-t", "--toy", type=int, default=1, help="plot this toy", metavar="N")
-
+parser.add_argument("--orig", default="asimov_ptll_q20_mtTemplatesForCH.root")
 args = parser.parse_args()
 
 files = {}
 h = {}
+
+origF = TFile.Open(args.orig)
+horig = origF.Get("rec_ptll/data_obs")
 
 #gROOT.ProcessLine("""
 ##include <TFile.h>
@@ -23,25 +26,29 @@ h = {}
 #)
 
 gROOT.ProcessLine("""
-TFile* f1 = TFile::Open("/uscms_data/d3/msaunder/combine/CMSSW_8_1_0/src/UserCode/mtMorphing/submissionScripts/toy1_higgsCombineTest.GenerateOnly.mH1725.1.root");
-f1->cd("toys");
-TH1F* h1 = toy_1->createHistogram("CMS_th1x");
+TFile* f = TFile::Open("%s");
+f->cd("toys");
+TH1F* h1 = (TH1F*)toy_1->createHistogram("CMS_th1x");
 h1->SetDirectory(0);
-f1->Close();
-
-TFile* f2 = TFile::Open("/uscms_data/d3/msaunder/combine/CMSSW_8_1_0/src/UserCode/mtMorphing/submissionScripts/toy2_higgsCombineTest.GenerateOnly.mH1725.1.root");
-f2->cd("toys");
-TH1F* h2 = toy_1->createHistogram("CMS_th1x");
+TH1F* h2 = (TH1F*)toy_2->createHistogram("CMS_th1x");
 h2->SetDirectory(0);
-f2->Close();
+f->Close();
 
-"""
+""" % args.inF
 )
 from ROOT import h1,h2
-h1.Draw("hist")
+#h1.Draw("hist")
 
-diff=h1.Clone()
-diff.Add(h2,-1)
+h1r = horig.Clone("toy1")
+h1r.Reset()
+for b in xrange(1, h1r.GetNbinsX()+1):
+    h1r.SetBinContent(b, h1.GetBinContent(b))
+    h1r.SetBinError(b, h1.GetBinError(b))
+
+#diff=h1.Clone("h2_diff")
+#diff.Add(h2,-1)
+diff=h1r.Clone("h2_diff")
+diff.Add(horig,-1)
 diff.Draw("hist")
 
 #for i,inF in enumerate(args.inF):

@@ -231,13 +231,16 @@ def main():
     parser.add_argument("-o", "--outDir", default="", help="output directory")
     parser.add_argument("-f", "--interp", default="", help="interpolation method used (for label only!)")
     parser.add_argument("-j", "--json", default="impacts.json", help="output json file for moment impacts")
+    parser.add_argument("--oldtoppt", action="store_true", default=False, help="use top pT reweighting as one-sided systematic")
+    parser.add_argument("--oldtW", action="store_true", default=False, help="use tW DR nominal and DS systematic") 
     parser.add_argument("--format", nargs="+", default=["png"], help="output file format(s)")
     parser.add_argument("--nomoments", action="store_true", default=False, help="ignore moments")
     parser.add_argument("--nocalibration", action="store_true", default=False, help="don't apply calibration to extracted masses")
     parser.add_argument("--nogensysts", action="store_true", default=False, help="don't include alternate MC generator systs")
 #    parser.add_argument("--obs", default="rec_ptll", choices=(observables+["all"]), help="reco_observable")
-    parser.add_argument("--syst", default="", nargs="*", choices=(systematics + ["none","None"]), help="ONLY plot these systematics") 
-    parser.add_argument("--obs", nargs="+", default=["rec_ptll"], choices=(observables+["all","kin","diff"]), help="reco_observable")
+    parser.add_argument("--systs", default="", nargs="*", choices=(systematics + ["none","None"]), help="ONLY plot these systematics") 
+    parser.add_argument("--scaleGen", action="store_true", default=False, help="scale gen rates to reco level")
+    parser.add_argument("--obs", nargs="+", default=["rec_ptll"])#, choices=(observables+["all","kin","diff"]), help="reco_observable")
     parser.add_argument("--minmt", type=int, default=1665, help="min mt")
     parser.add_argument("--maxmt", type=int, default=1785, help="max mt")
     
@@ -252,7 +255,17 @@ def main():
     args = parser.parse_args()
     
     f = TFile.Open(args.inF, "read")
+   
+    scaleGen = args.scaleGen
     
+    newtoppt = not args.oldtoppt
+    if newtoppt:
+        oneSidedSysts.remove("toppt")
+    newtW = not args.oldtW
+    if newtW:
+        oneSidedSysts.remove("DS")
+
+
     noBinScaling = args.noBinScaling 
     __mtactual = [1665,1695,1715,1725,1735,1755,1785]
     __tWactual = [1695,1725,1755]
@@ -311,11 +324,11 @@ def main():
             os.system("mkdir -p %s/%s/calibration" % (args.outDir,obs))
 
 
-    if "none" in args.syst or "None" in args.syst:
+    if "none" in args.systs or "None" in args.systs:
         systematics = []
-    elif args.syst != "":
+    elif args.systs != "":
         # Only plot these systematics
-        systematics = args.syst
+        systematics = args.systs
         print "Plotting the following systematics:", systematics
     if args.nomoments:
         print "Ignoring moments"
@@ -366,10 +379,19 @@ def main():
                     h[s][lvl][obs]["nominal"][m].SetDirectory(0)
                     if _i == 0:
                         # Test for variable binning
-                        if len(h[s][lvl][obs]["nominal"][m].GetXaxis().GetXbins()) > 0:
-                            variableBinning[obs] = True
-                        else:
-                            variableBinning[obs] = False
+                        _binWidths = [ h[s][lvl][obs]["nominal"][m].GetBinWidth(_bin) for _bin in range(1,h[s][lvl][obs]["nominal"][m].GetNbinsX()+1) ]
+                        _binW = _binWidths[0]
+                        variableBinning[obs] = False 
+                        for _width in _binWidths:
+                            if abs(_width - _binW) > 1e-3:
+#                                print "**** Variable binning detected for %s ****" % obs
+                                variableBinning[obs] = True
+                                break
+                        
+#                        if len(h[s][lvl][obs]["nominal"][m].GetXaxis().GetXbins()) > 0:
+#                            variableBinning[obs] = True
+#                        else:
+#                            variableBinning[obs] = False
 
                     _error = ROOT.Double(0)
                     _rate = h[s][lvl][obs]["nominal"][m].IntegralAndError(1,h[s][lvl][obs]["nominal"][m].GetNbinsX(),_error)
@@ -382,7 +404,8 @@ def main():
 
                     if not noBinScaling and variableBinning[obs]: 
                         # Variable binning. Scale by 1/binWidth
-                         h[s][lvl][obs]["nominal"][m].Scale(1., "width")
+                        print "Scaling %s by bin width" % obs
+                        h[s][lvl][obs]["nominal"][m].Scale(1., "width")
 
                     if not args.nomoments:
                         m1,m1err,m2,m2err,m3,m3err,m4,m4err = calcMoments(h[s][lvl][obs]["nominal"][m])
@@ -577,7 +600,7 @@ def main():
                         if i == 0:
                             hist.Draw("hist 9")
                             hist.SetTitle("%s  %s%s  Actual vs Morphed templates  m_{t} = %.1f GeV" % (signalTitle[s],"" if args.interp == "" else args.interp+"  ",obs, m/10.))
-                            hist.GetYaxis().SetTitle("%sEntries / %s" % ("Normalized " if args.norm else "", "%.0f GeV" % (hist.GetBinCenter(2) - hist.GetBinCenter(1)) if not variableBinning[obs] else "GeV") )
+                            hist.GetYaxis().SetTitle("%sEvents / %s" % ("Normalized " if args.norm else "", "%.0f GeV" % (hist.GetBinCenter(2) - hist.GetBinCenter(1)) if not variableBinning[obs] else "GeV") )
                             hist.GetYaxis().SetTitleOffset(1.3)
                         else:
                             hist.Draw("hist 9 same")
@@ -645,7 +668,7 @@ def main():
                             nom.SetTitle("%s %s%s %s Mass Scan" % (obs[:3],obsTitle[obs[4:]], "" if syst == "nominal" else (" " + syst + ( (" "+var) if syst not in oneSidedSysts else "")), lvl ))
                             # Dummy draw for creating axis objects
                             nom.Draw("hist 9")
-                            nom.GetYaxis().SetTitle("%sEntries / %s" % ("Normalized " if args.norm else "", "%.0f GeV" % (nom.GetBinCenter(2) - nom.GetBinCenter(1)) if not variableBinning[obs] else "GeV") )
+                            nom.GetYaxis().SetTitle("%sEvents / %s" % ("Normalized " if args.norm else "", "%.0f GeV" % (nom.GetBinCenter(2) - nom.GetBinCenter(1)) if not variableBinning[obs] else "GeV") )
                             nom.GetYaxis().SetTitleOffset(1.4)
                             c.cd()
                             #nom.Draw("hist 9")
@@ -681,8 +704,6 @@ def main():
                                 diff[m] = mhist[m].Clone()
                                 diff[m].Add(nom,-1)
                                 diff[m].Divide(nom)
-#                        diff[m].SetFillStyle(3244)
-#                        diff[m].SetFillColor(massColor[m])
                                 
                                 minRatioY = min(minRatioY, diff[m].GetMinimum())
                                 maxRatioY = max(maxRatioY, diff[m].GetMaximum())
@@ -716,7 +737,8 @@ def main():
                             nom.GetXaxis().SetTitle(obsTitle[obs[4:]] + " [GeV]")
                             c.Update()
                             for fmt in args.format:
-                                c.SaveAs("%s/%s/histplots/mtscan/noratio_mtscan_%s_%s%s_%s.%s" % (args.outDir,obs,signalName[s],lvl, "" if syst == "nominal" else ("_"+ syst + (var if syst not in oneSidedSysts else "")),obs,fmt))
+                                c.SaveAs("%s/%s/histplots/mtscan/noratio_mtscan_%s_%s%s_%s.%s" % (args.outDir,obs,signalName[s],lvl, "_"+ syst + (var if syst not in oneSidedSysts else ""),obs,fmt))
+                                #c.SaveAs("%s/%s/histplots/mtscan/noratio_mtscan_%s_%s%s_%s.%s" % (args.outDir,obs,signalName[s],lvl, "" if syst == "nominal" else ("_"+ syst + (var if syst not in oneSidedSysts else "")),obs,fmt))
                             pad2.cd()
                             nom.GetXaxis().SetTitle("")
 
@@ -725,7 +747,7 @@ def main():
                                 if i == 0:
                                     diff[m].SetTitle("")
                                     diff[m].GetXaxis().SetTitle(obsTitle[obs[4:]] + " [GeV]")
-                                    diff[m].GetYaxis().SetTitle("% diff wrt nom")
+                                    diff[m].GetYaxis().SetTitle("% diff to 172.5")
                                     diff[m].GetYaxis().SetRangeUser(minRatioY-padding, maxRatioY+padding)
                                     diff[m].Draw("hist e1 9")
                                     c.cd()
@@ -754,7 +776,8 @@ def main():
                             ratioLegend.Draw("same")
                             c.Update()
                             for fmt in args.format:
-                                c.SaveAs("%s/%s/histplots/mtscan/ratio_mtscan_%s_%s%s_%s.%s" % (args.outDir,obs,signalName[s],lvl, "" if syst == "nominal" else ("_"+ syst + (var if syst not in oneSidedSysts else "")) ,obs,fmt))
+                                c.SaveAs("%s/%s/histplots/mtscan/ratio_mtscan_%s_%s%s_%s.%s" % (args.outDir,obs,signalName[s],lvl, "_"+ syst + (var if syst not in oneSidedSysts else "") ,obs,fmt))
+                                #c.SaveAs("%s/%s/histplots/mtscan/ratio_mtscan_%s_%s%s_%s.%s" % (args.outDir,obs,signalName[s],lvl, "" if syst == "nominal" else ("_"+ syst + (var if syst not in oneSidedSysts else "")) ,obs,fmt))
 
                             pad1.cd()
                             diff[masses[s]['actual'][0]].GetXaxis().SetTitleSize(0.1)
@@ -765,7 +788,8 @@ def main():
                             canvasRatio.cd()
                             diff[masses[s]['actual'][0]].SetTitle("")
                             for fmt in args.format:
-                                canvasRatio.SaveAs("%s/%s/histplots/mtscan/mtscan_%s_%s%s_%s.%s" % (args.outDir,obs,signalName[s],lvl, "" if syst == "nominal" else ("_"+ syst + (var if syst not in oneSidedSysts else "")), obs,fmt))
+                                canvasRatio.SaveAs("%s/%s/histplots/mtscan/mtscan_%s_%s%s_%s.%s" % (args.outDir,obs,signalName[s],lvl, "_"+ syst + (var if syst not in oneSidedSysts else ""), obs,fmt))
+                                #canvasRatio.SaveAs("%s/%s/histplots/mtscan/mtscan_%s_%s%s_%s.%s" % (args.outDir,obs,signalName[s],lvl, "" if syst == "nominal" else ("_"+ syst + (var if syst not in oneSidedSysts else "")), obs,fmt))
 
                     
                     nom = h[s][lvl][obs]["nominal"][1725].Clone()
@@ -836,7 +860,7 @@ def main():
                                 hist.GetYaxis().SetRangeUser(minY-padding, maxY+padding)
                                 #hist.SetTitle("%s  %s  %s  %s%s" % (signalTitle[s],obs,syst,"" if args.interp =="" else args.interp+"  ","actual" if lvl == "actual" else "morphed"))
                                 hist.SetTitle("%s  %s  %s  %s" % (signalTitle[s],obs,syst,"" if args.interp =="" else args.interp+"  "))
-                                hist.GetYaxis().SetTitle("%sEntries / %s" % ("Normalized " if args.norm else "", "%.0f GeV" % (hist.GetBinCenter(2) - hist.GetBinCenter(1)) if not variableBinning[obs] else "GeV") )
+                                hist.GetYaxis().SetTitle("%sEvents / %s" % ("Normalized " if args.norm else "", "%.0f GeV" % (hist.GetBinCenter(2) - hist.GetBinCenter(1)) if not variableBinning[obs] else "GeV") )
                                 hist.GetYaxis().SetTitleOffset(1.3)
                             else:
                                 hist.Draw("hist 9 same")
@@ -904,6 +928,69 @@ def main():
                     nom.Rebin(args.rebin)
                     nom.SetLineColor(kBlack)
                     nom.SetLineWidth(2)
+
+                    # Gen/rec plots
+                    #reclvl = obs[:4]
+                    #otherlvl = "gen_" if revlvl == "rec_" else "rec_"
+                    #otherobs = otherlvl + obs[4:]
+                    #if otherobs in observables:
+                    if obs[:4] == "rec_" and obs.replace("rec_","gen_") in observables:
+                        gen = h[s][lvl][obs.replace("rec_","gen_")]["nominal"][1725]
+                        gen.Rebin(args.rebin)
+                        gen.SetLineColor(kRed)
+                        gen.SetLineWidth(2)
+
+                        rec = nom.Clone("rec_%s" % nom.GetName())
+
+                        if scaleGen:
+                            # Scale gen rate to rec rate
+                            gen.Scale(rec.Integral() / gen.Integral())
+
+                        l = TLegend(0.75,0.7, 0.88,0.88)
+                        l.SetBorderSize(0)
+                        l.AddEntry(nom, "rec")
+                        l.AddEntry(gen, "gen")
+
+                        ratioGen = gen.Clone("%s_gen_ratio" % obs[4:])
+                        ratioGen.Divide(nom)
+
+                        canvasRatio.cd()
+                        canvasRatio.ResetDrawn()
+                        canvasRatio.Draw()
+                        canvasRatio.cd()
+
+                        pad1.Draw()
+                        pad2.Draw()
+
+                        pad1.cd()
+                        rec.SetTitle("%s  %s  m_{t} = %.1f GeV" % (obsTitle[obs[4:]], signalTitle[s], 172.5))
+                        rec.GetYaxis().SetTitle("%sEvents / %s" % ("Normalized " if args.norm else "", "%.0f GeV" % (rec.GetBinCenter(2) - rec.GetBinCenter(1)) if not variableBinning[obs] else "GeV" ) )
+                        rec.Draw("hist")
+                        gen.Draw("hist same")
+
+                        CMS_lumi.CMS_lumi(pad1, 4, 11)
+                        l.Draw("same")
+
+                        pad2.cd()
+                        ratioGen.SetTitle("")
+                        ratioGen.GetYaxis().SetTitle("gen / rec")
+
+                        ratioGen.GetXaxis().SetTitle(obsTitle[obs[4:]] + " [GeV]")
+                        ratioGen.GetXaxis().SetTitleSize(0.1)
+                        ratioGen.GetXaxis().SetTitleOffset(1.1)
+                        ratioGen.GetYaxis().SetTitleSize(0.073)
+                        ratioGen.GetYaxis().SetTitleOffset(0.5)
+
+                        ratioGen.Draw("hist")
+
+                        if scaleGen:
+                            line = TLine(ratioGen.GetXaxis().GetBinLowEdge(1), 1.0, ratioGen.GetXaxis().GetBinUpEdge(ratioGen.GetNbinsX()), 1.0)
+                            line.SetLineWidth(2)
+                            line.Draw("same")
+
+                        for fmt in args.format:
+                            canvasRatio.SaveAs("%s/%s/histplots/recgen_%s_%s_hist_%s.%s" % (args.outDir,obs,signalName[s],lvl,obs,fmt))
+
                     for syst in systematics:
                         if s == "tt" and syst in tWOnlySysts: continue
                         if s == "tW" and syst in ttOnlySysts: continue
@@ -949,7 +1036,7 @@ def main():
                                 hist.Draw("hist 9")
                                 #hist.SetTitle("%s  %s  %s  %s%s" % (signalTitle[s],obs,syst,"" if args.interp =="" else args.interp+"  ","actual" if lvl == "actual" else "morphed"))
                                 hist.SetTitle("%s  %s  %s  %s" % (signalTitle[s],obs,syst,"" if args.interp =="" else args.interp+"  "))
-                                hist.GetYaxis().SetTitle("%sEntries / %s" % ("Normalized " if args.norm else "", "%.0f GeV" % (hist.GetBinCenter(2) - hist.GetBinCenter(1)) if not variableBinning[obs] else "GeV" ) )
+                                hist.GetYaxis().SetTitle("%sEvents / %s" % ("Normalized " if args.norm else "", "%.0f GeV" % (hist.GetBinCenter(2) - hist.GetBinCenter(1)) if not variableBinning[obs] else "GeV" ) )
                                 hist.GetYaxis().SetTitleOffset(1.4)
                             else:
                                 hist.Draw("hist 9 same")
@@ -1175,7 +1262,7 @@ def main():
 
     c.cd()
 
-    if not args.nomoments and not args.mtscan:
+    if not args.nomoments:# and not args.mtscan:
         if not args.noplots: print "About to draw moment plots"
         mg = {}
         fitLines = {}
@@ -1207,6 +1294,7 @@ def main():
                         g[s][lvl][obs]["nominal"][moment].Fit("pol1", "Q")
                         fitLines[s][lvl][obs]["nominal"][moment] = g[s][lvl][obs]["nominal"][moment].GetFunction("pol1") 
                         fitLines[s][lvl][obs]["nominal"][moment].SetLineColor(kBlack)    
+                 
                     
 
                     for syst in systematics:
@@ -1274,6 +1362,51 @@ def main():
                                 
                                 for fmt in args.format:
                                     c.SaveAs("%s/%s/%s_%s_%s_%s_%s.%s" % (args.outDir,obs,signalName[s],lvl,obs,syst,moment,fmt))
+
+                for obs in observables:
+                    for moment in ["m1","m2","m3","m4"]:
+
+                        # Gen/Rec plots
+                        if obs[:4] == "rec_" and obs.replace("rec_","gen_") in observables:
+
+                            mgobs = "recgen_%s" % obs[4:]
+                            mg[s][lvl][mgobs] = {}
+                            genobs = obs.replace("rec_","gen_")
+                            l = TLegend(0.12,0.7, 0.3,0.88)
+                            l.SetBorderSize(0)
+                            fitLines[s][lvl][obs]["nominal"][moment].SetLineColor(kBlack)
+                            fitLines[s][lvl][genobs]["nominal"][moment].SetLineColor(kRed) 
+                            
+                            g[s][lvl][obs]["nominal"][moment].SetLineColor(kBlack)
+                            g[s][lvl][genobs]["nominal"][moment].SetLineColor(kRed)
+                            
+                            l.AddEntry(g[s][lvl][obs]["nominal"][moment], "rec")
+                            l.AddEntry(g[s][lvl][genobs]["nominal"][moment], "gen")
+
+                            mg[s][lvl][mgobs][moment] = TMultiGraph()
+                            mg[s][lvl][mgobs][moment].SetName("%s_%s_%s_%s"%(s,lvl,mgobs,moment))
+
+                            mg[s][lvl][mgobs][moment].Add(g[s][lvl][obs]["nominal"][moment].Clone(), "p")
+                            mg[s][lvl][mgobs][moment].Add(g[s][lvl][genobs]["nominal"][moment].Clone(), "p")
+                            if not args.noplots:
+                                mg[s][lvl][mgobs][moment].SetTitle("%s  %s  %s%s  Moment %s" % (signalTitle[s],obsTitle[obs[4:]],"" if args.interp =="" else args.interp+"  ","actual" if lvl == "actual" else "morphed",moment[1]))
+                                mg[s][lvl][mgobs][moment].Draw("a9")
+
+                                mg[s][lvl][mgobs][moment].GetXaxis().SetTitle("m_{t} [GeV]")
+                                mg[s][lvl][mgobs][moment].GetYaxis().SetTitle("%s [GeV]%s" % (moment, "" if moment == "m1" else "^{%s}"%moment[1]))
+                                mg[s][lvl][mgobs][moment].GetYaxis().SetTitleOffset(1.2)
+
+                                l.Draw("same")
+                                txt.DrawLatex(0.44, 0.35, "Moment %s Slopes"%moment[1])
+                                txt.DrawLatex(0.407, 0.25,  "Rec: %.4f #pm %.4f" % (fitLines[s][lvl][obs]["nominal"][moment].GetParameter(1), fitLines[s][lvl][obs]["nominal"][moment].GetParError(1)))
+                                txt.DrawLatex(0.4, 0.2, "#color[2]{Gen: %.4f #pm %.4f}" % (fitLines[s][lvl][genobs]["nominal"][moment].GetParameter(1), fitLines[s][lvl][genobs]["nominal"][moment].GetParError(1)))
+                                
+                                txt.DrawLatex(0.76, 0.35, "Offsets")
+                                txt.DrawLatex(0.707, 0.25,  "Rec: %.4f #pm %.4f" % (fitLines[s][lvl][obs]["nominal"][moment].GetParameter(0), fitLines[s][lvl][obs]["nominal"][moment].GetParError(0)))
+                                txt.DrawLatex(0.7, 0.2, "#color[2]{Gen: %.4f #pm %.4f}" % (fitLines[s][lvl][genobs]["nominal"][moment].GetParameter(0), fitLines[s][lvl][genobs]["nominal"][moment].GetParError(0)))
+                                
+                                for fmt in args.format:
+                                    c.SaveAs("%s/%s/recgen_%s_%s_%s_%s.%s" % (args.outDir,obs,signalName[s],lvl,obs,moment,fmt))
 
     
     # Compare morphed/actual moments and rates
@@ -1360,7 +1493,7 @@ def main():
         f.Close()
 
 
-    if not args.nomoments and not args.mtscan:
+    if not args.nomoments:# and not args.mtscan:
         # Extracted masses
         uncalibrated_mt = {}
         calibrated_mt = {}

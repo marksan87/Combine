@@ -42,6 +42,7 @@ systematics = {\
 
 experimentalSysts = ["pileup", "Lumi", "BTagSF", "EleIDEff", "EleRecoEff", "EleScale", "EleSmear", "MuIDEff", "MuIsoEff", "MuTrackEff", "MuScale", "TrigEff", "JEC", "JER",'BkgNorm' ]
 theorySysts = ["toppt", "Q2", "isr", "fsr", "Pdf", "hdamp", "UE", "CRerdON", "CRGluon", "CRQCD", "amcanlo", "madgraph", "herwigpp", "DS" ]
+binStats = []
 
 parser = ArgumentParser()
 parser.add_argument("-i", "--inF", default="mtTemplatesForCH.root", help="input template root file")
@@ -52,7 +53,7 @@ parser.add_argument("--noBinStats", action="store_true", default=False, help="do
 parser.add_argument("--deltaMT", type=float, default=0.1, help="MT increments for morphing range")
 parser.add_argument("--precision", type=int, default=1, help="decimal places of precision for morphed templates")
 parser.add_argument("--splineInterp", default="CSPLINE", help="CH roofit morphing interpolation mode")
-parser.add_argument("--systs", default="", nargs="+", choices=(["None","none"] + systematics.keys()), help="ONLY plot these systematics (or 'none' for no systematics)") 
+parser.add_argument("--syst", "--systs", dest="systs", default="", nargs="+", choices=(["None","none"] + systematics.keys()), help="ONLY plot these systematics (or 'none' for no systematics)") 
 parser.add_argument("--obs", default="ptll", help="observable")
 parser.add_argument("--reco", default="rec", choices=["rec","gen"], help="reco level")
 parser.add_argument("-v", "--verbosity", type=int, default=3, help="verbosity level (0+)")
@@ -157,6 +158,7 @@ if addBinStats and args.obs != "diff" and 'tttW' in signals:
     nbins = f.Get("%s_%s/tttW%s" % (args.reco, args.obs,masses[0])).GetNbinsX()
     print "Using binwise statistical uncertainty nps in %d bins" % nbins
     for _b in xrange(1, nbins+1):
+        binStats.append("bin%d" % _b)
         systematics["bin%d"%_b] = "shape"
     f.Close()
 
@@ -233,9 +235,11 @@ cb.cp().signals().ExtractPdfs(cb, 'morph', '$BIN_$PROCESS_morph', '')
 print "Done extracting pdfs"
 # Set up groups
 if len(systematics) > 0:
-    cb.SetGroup('all', theorySysts + experimentalSysts)
+    cb.SetGroup('all', theorySysts + experimentalSysts + binStats)
     cb.SetGroup('theory', theorySysts)
     cb.SetGroup('exp', experimentalSysts)
+    if addBinStats:
+        cb.SetGroup('binStats', binStats)
 
 # Write to datacard
 cb.PrintAll()

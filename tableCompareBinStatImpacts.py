@@ -29,7 +29,6 @@ parser.add_argument("-1", "--inF1", help="input json file with bin stats impacts
 parser.add_argument("-2", "--inF2", help="input json file with bin stats impacts")
 parser.add_argument("--obs", default="ptll")
 parser.add_argument("--reco", default="rec")
-parser.add_argument("--allSysts", action="store_true", default=False, help="all systematics included in the fits (for table text only)")
 parser.add_argument("-o", "--outF", default="", help="output plot file")
 args = parser.parse_args()
 
@@ -76,13 +75,13 @@ f.write( \
 
 \\begin{table*}[h]
 \t\\begin{center}
-\t\t\\caption{Comparison of MC stat impacts for %s $%s$ with 10 and 20 bins %s}
+\t\t\\caption{Comparison of MC stat impacts for %s $%s$ with 10 and 20 bins}
 \t\t\\label{table:cutflow}
 \t\t\\begin{tabular}{ c | c c | c }
 \t\t\t\\hline
 \t\t\t$%s$ [GeV] & 20 Bins & 20 Bins Total & 10 Bins \\\\
 \t\t\t\\hline
-""" % (args.reco, obsTitle[args.obs], "(all systematics included in fits)" if args.allSysts else "(no other systematics included)", obsTitle[args.obs])
+""" % (args.reco, obsTitle[args.obs], obsTitle[args.obs])
 )
 
 for b in xrange(1, len(bins2)+1):
