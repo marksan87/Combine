@@ -27,11 +27,13 @@ systematics = {\
     "Pdf":"shape", \
     "isr":"shape", \
     "fsr":"shape", \
+    #"toppt":"discrete", \
     "toppt":"shape", \
     "Q2":"shape", \
     "hdamp":"shape", \
     "UE":"shape", \
     "CRerdON":"shape", \
+    #"CRGluon":"discrete", \
     "CRGluon":"shape", \
     "CRQCD":"shape", \
     "DS":"shape", \
@@ -40,6 +42,8 @@ systematics = {\
 #    "herwigpp":"shape", \
     }
 
+discreteSysts = ["CRGluon"]
+
 experimentalSysts = ["pileup", "Lumi", "BTagSF", "EleIDEff", "EleRecoEff", "EleScale", "EleSmear", "MuIDEff", "MuIsoEff", "MuTrackEff", "MuScale", "TrigEff", "JEC", "JER",'BkgNorm' ]
 theorySysts = ["toppt", "Q2", "isr", "fsr", "Pdf", "hdamp", "UE", "CRerdON", "CRGluon", "CRQCD", "amcanlo", "madgraph", "herwigpp", "DS" ]
 binStats = []
@@ -47,9 +51,11 @@ binStats = []
 parser = ArgumentParser()
 parser.add_argument("-i", "--inF", default="mtTemplatesForCH.root", help="input template root file")
 parser.add_argument("-o", "--outF", default="", help="append name to output datacard and rootfile")
+parser.add_argument("-s", "--sig", default="tttW", choices=["tt","tW","tttW", "ttactual", "tttWactual", "ttactualtoppt", "ttactualQ2Up", "ttactualQ2Down"], help="signal sample")
 parser.add_argument("--minmt", type=float, default=166.5, help="min MT for morph mass range")
 parser.add_argument("--maxmt", type=float, default=178.5, help="max MT for morph mass range")
-parser.add_argument("--noBinStats", action="store_true", default=False, help="don't include binwise statistics for signal")
+parser.add_argument("--addBinStats", action="store_true", default=False, help="add barlow-beeston lite binwise stat unc nps")
+parser.add_argument("--addMCGenSysts", action="store_true", default=False, help="include alternate MC generators")
 parser.add_argument("--deltaMT", type=float, default=0.1, help="MT increments for morphing range")
 parser.add_argument("--precision", type=int, default=1, help="decimal places of precision for morphed templates")
 parser.add_argument("--splineInterp", default="CSPLINE", help="CH roofit morphing interpolation mode")
@@ -60,7 +66,12 @@ parser.add_argument("-v", "--verbosity", type=int, default=3, help="verbosity le
 args = parser.parse_args()
 
 
-addBinStats = not args.noBinStats
+addBinStats = args.addBinStats
+addMCGenSysts = args.addMCGenSysts
+if addMCGenSysts:
+    systematics["amcanlo"]  = "shape"
+    systematics["madgraph"] = "shape"
+    systematics["herwigpp"] = "shape"
 
 if args.outF != "":
     outF = args.outF + "_"
@@ -104,22 +115,29 @@ outRootName = "%soutputfileMorph.root" % (outF)
 cb = ch.CombineHarvester()
 cb.SetVerbosity(args.verbosity)
 
-"""
-masses = [  \
-          '1665',
-          '1695',
-          '1715',
-          '1725',
-          '1735',
-          '1755',
-          '1785' \
-          ]
-"""
-#deltaM = 1
-#masses = [str(1665 + i * deltaM) for i in xrange(121)]
-#masses = [str(1695 + i * deltaM) for i in xrange(61)]
-masses = range(int(args.minmt*decimalScaling), int((args.maxmt+args.deltaMT)*decimalScaling), int(args.deltaMT*decimalScaling))
-masses = [str(m) for m in masses]
+if args.sig == "tt" or args.sig == "ttactual":
+    systematics.pop("DS", None)
+
+if "ttactual" in args.sig:
+    masses = [  \
+              '1665',
+              '1695',
+              '1715',
+              '1725',
+              '1735',
+              '1755',
+              '1785' \
+              ]
+elif "tttWactual" in args.sig:
+    masses = [  \
+              '1695',
+              '1725',
+              '1755',
+              ]
+
+else:
+    masses = range(int(args.minmt*decimalScaling), int((args.maxmt+args.deltaMT)*decimalScaling), int(args.deltaMT*decimalScaling))
+    masses = [str(m) for m in masses]
 
 
 exec('minstr = "%.' + str(precision) + 'f" % (args.minmt)')
@@ -131,7 +149,8 @@ ttOnlySysts = ['toppt','hdamp','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgr
 tWOnlySysts = ['DS']
 
 #signals = ['tt','tW']
-signals = ['tttW']
+#signals = ['tttW']
+signals = [args.sig]
 
 if len(signals) == 1 and signals[0] == "tt":
     print "TTbar only signal. Removing DS systematic"
@@ -192,7 +211,17 @@ if len(systematics) > 0:
 
 # Extract templates from input root file
 cb.cp().backgrounds().ExtractShapes(args.inF,"$BIN/$PROCESS","$BIN/$PROCESS")
-cb.cp().signals().ExtractShapes(args.inF,"$BIN/$PROCESS$MASS","$BIN/$PROCESS$MASS_$SYSTEMATIC")
+if args.sig == "ttactualtoppt": 
+    cb.cp().signals().ExtractShapes(args.inF,"$BIN/ttactual$MASS_topptUp","$BIN/ttactual$MASS_$SYSTEMATIC")
+elif args.sig == "ttactualQ2Up":
+    cb.cp().signals().ExtractShapes(args.inF,"$BIN/ttactual$MASS_Q2Up","$BIN/ttactual$MASS_$SYSTEMATIC")
+elif args.sig == "ttactualQ2Down":
+    cb.cp().signals().ExtractShapes(args.inF,"$BIN/ttactual$MASS_Q2Down","$BIN/ttactual$MASS_$SYSTEMATIC")
+else:
+    cb.cp().signals().ExtractShapes(args.inF,"$BIN/$PROCESS$MASS","$BIN/$PROCESS$MASS_$SYSTEMATIC")
+
+
+
 #if len(systematics) > 0:
 #    cb.cp().signals().ExtractShapes(args.inF,"$BIN/$PROCESS$MASS","$BIN/$PROCESS$MASS_$SYSTEMATIC")
 #else:

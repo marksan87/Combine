@@ -9,21 +9,33 @@ from array import array
 
 gROOT.SetBatch(True)
 
+oneSidedSysts = ["CRerdON", "CRGluon", "CRQCD", "amcanlo", "madgraph", "herwigpp", "toppt", "DS"]
+
 parser = ArgumentParser()
 parser.add_argument("-i", "--inF", default="", help="CH datacard")
 parser.add_argument("-o", "--outDir", default="")#"grid_scans")
 parser.add_argument("-m", "--mt", type=float, default=172.5, help="initial mt for generating asimov dataset")
-parser.add_argument("--minmt", type=float, default=171.0)
-parser.add_argument("--maxmt", type=float, default=174.0)
+parser.add_argument("--minmt", type=float, default=166.5)
+parser.add_argument("--maxmt", type=float, default=178.5)
+parser.add_argument("-f", "--format", "--formats", dest="formats", nargs="+", default=["png"], help="output file formats")
 parser.add_argument("--log", default="combine.log", help ="log file with output of combine commands")
 parser.add_argument("--noFreeze", action="store_true", default=False, help="float other nuisances when scanning one np")
-parser.add_argument("-p", "--points", type=int, default=100)
+parser.add_argument("--robustHesse", action="store_true", default=False, help="use option --robustHesse 1")
+parser.add_argument("--nosysts", action="store_true", default=False, help="don't include systematic likelihood scans")
+parser.add_argument("-p", "--points", type=int, default=200)
 parser.add_argument("-c", "--cut", type=float, default=1.3, help="2*deltaNLL to cut on")
+parser.add_argument("--noconst", dest="noconst", action="store_true", default=False, help="absolute likelihood")
 parser.add_argument("-d", "--data_obs", action="store_true", default=False, help="use data_obs instead of asimov dataset")
 parser.add_argument("-v", "--verbosity", type=int, default=0, help="verbosity level")
 parser.add_argument("-q", "--quiet", action="store_true", default=False, help="no terminal output (will still log with specified verbosity level")
 args = parser.parse_args()
 
+useSysts = not args.nosysts
+useRobustHesse = args.robustHesse
+if useRobustHesse:
+    print "Using --robustHesse 1"
+formats = [fmt.strip(".") for fmt in args.formats]
+print "Saving plots as:", formats
 freezePars = not args.noFreeze  # Controls whether to freeze other nps when scanning one np
 if not args.quiet:
     if freezePars:
@@ -87,30 +99,40 @@ maxmt = int((10**precision)*args.maxmt)
 
 nset = w.set("nuisances")
 nuisances = []
-niter = nset.createIterator()
-
-for i in range(len(nset)):
-    nuisances.append(niter.Next().getPlotLabel())
-
-#nuisances = ['bin2']
-if not args.quiet: print "Found np's:", nuisances
+if useSysts:
+    try:
+        niter = nset.createIterator()
+        for i in range(len(nset)):
+            nuisances.append(niter.Next().getPlotLabel())
+    except ReferenceError:
+        # No nuisances found!
+        niter = None
+    if not args.quiet: print "Found np's:", nuisances
 f.Close()
 #pprint(nuisances)
 
 # saveSpecifiedNuis causes seg fault
 #options = "--saveSpecifiedNuis all --floatOtherPOIs 1 --saveInactivePOI 1 --robustFit 1 --expectSignal 1"
 #options = "--setRobustFitTolerance 0.2 --floatOtherPOIs 1 --saveInactivePOI 1 --robustFit 1 --expectSignal 1"
-options = "--floatOtherPOIs 1 --saveInactivePOI 1 --robustFit 1 --expectSignal 1"
+
+options = "--floatOtherPOIs 1 --saveInactivePOI 1 --robustFit 1 --expectSignal 1 --cminDefaultMinimizerStrategy=1 --cminFallbackAlgo Minuit2,0"
+if args.noconst:
+    options += " --saveNLL --X-rtd REMOVE_CONSTANT_ZERO_POINT=1"
+#options = "--saveNLL --X-rtd REMOVE_CONSTANT_ZERO_POINT=1 --floatOtherPOIs 1 --saveInactivePOI 1 --robustFit 1 --expectSignal 1 --cminDefaultMinimizerStrategy=1 --cminFallbackAlgo Minuit2,0"
+if useRobustHesse:
+    options += " --robustHesse 1"
+#options = "--floatOtherPOIs 1 --saveInactivePOI 1 --robustFit 1 --expectSignal 1 --robustHesse 1"
 
 
 # Initial fit
 combineCmd = "combine -M MultiDimFit -n _bestfit --algo singles --redefineSignalPOIs MT,r %s --setParameterRanges MT=%d,%d:r=0.5,1.5 %s -m 125 --setParameters MT=%d -d %s -v %d --saveWorkspace %s" % (options, minmt, maxmt, "%s" % ("-t -1" if useAsimov else ""), mt, cardRoot, args.verbosity, loggingCmd)
-os.system("pushd %s%s; echo '%s'%s; %s" % (outDir, silenceOutput, combineCmd, silenceOutput, combineCmd))
+os.system("pushd %s%s; echo '%s'%s; %s" % (outDir, silenceOutput, combineCmd, loggingCmd, combineCmd))
 
 # Run impact grid scans
-for n in nuisances:
+for n in ["MT"]+nuisances:
     freezeArgs = ""
-    if freezePars:
+    if freezePars and n != "MT" and len(nuisances) > 1:
+        
         # Comma separated list of all additional nps
         #freezeArgs = " --freezeParameters "
         freezeArgs = " --freezeParameters "
@@ -122,7 +144,7 @@ for n in nuisances:
         freezeArgs = freezeArgs[:-1]
 
     combineCmd = "combine -M MultiDimFit -n _%s_grid --algo grid --points %d%s --redefineSignalPOIs MT,r -P %s %s --setParameterRanges MT=%d,%d:r=0.5,1.5 %s -m 125 --setParameters MT=%d higgsCombine_bestfit.MultiDimFit.mH125.root --snapshotName MultiDimFit -v %d %s" % (n, args.points, freezeArgs, n, options, minmt, maxmt, "%s" % ("-t -1" if useAsimov else ""), mt, args.verbosity, loggingCmd)
-    os.system("pushd %s%s; echo '%s'%s; %s" % (outDir, silenceOutput, combineCmd, silenceOutput, combineCmd))
+    os.system("pushd %s%s; echo '%s'%s; %s" % (outDir, silenceOutput, combineCmd, loggingCmd, combineCmd))
 
 # NLL vs parameter
 paramG = {}
@@ -135,7 +157,7 @@ mtG_cut = {}
 c = TCanvas("c","C",1200,800)
 
 # Get graphs
-for n in nuisances:
+for n in ["MT"]+nuisances:
     f = TFile.Open("%s/higgsCombine_%s_grid.MultiDimFit.mH125.root" % (outDir, n) )
     t = f.Get("limit")
     
@@ -151,12 +173,19 @@ for n in nuisances:
 
     for i in range(1, t.GetEntriesFast()+1):
         t.GetEntry(i)
-        nll.append(2*t.deltaNLL)
+        exec("pval = t.%s" % n)
+        if n in oneSidedSysts and pval < 0: continue
+            #exec("if t.%s < 0: continue" % n)
+        
+        if args.noconst:
+            nll.append(2*(t.deltaNLL + t.nll + t.nll0))
+        else:
+            nll.append(2*t.deltaNLL)
         mt.append(t.MT / 10.)
         exec("par.append(t.%s)" % n)
         
         if abs(nll[-1]) < cutNLL:
-            nll_cut.append(2*t.deltaNLL)
+            nll_cut.append(nll[-1])
             mt_cut.append(t.MT / 10.)
             exec("par_cut.append(t.%s)" % n)
 
@@ -188,21 +217,26 @@ for n in nuisances:
     mtG_cut[n].GetYaxis().SetTitle("2*#Delta{NLL}")
     mtG_cut[n].SetMarkerStyle(22)
 
-    paramG[n].Draw("alp")
-    c.SaveAs("%s/nll_vs_%s.png" % (outDir,n))
+    if n != "MT":
+        paramG[n].Draw("alp")
+        for fmt in formats:
+            c.SaveAs("%s/nll_vs_%s.%s" % (outDir,n,fmt))
+        
+        paramG_cut[n].Draw("alp")
+        for fmt in formats:
+            c.SaveAs("%s/cut_nll_vs_%s.%s" % (outDir,n,fmt))
 
     mtG[n].Draw("alp")
-    c.SaveAs("%s/%s_nll_vs_mt.png" % (outDir,n))
+    for fmt in formats:
+        c.SaveAs("%s/%s_nll_vs_mt.%s" % (outDir,n,fmt))
     
-    paramG_cut[n].Draw("alp")
-    c.SaveAs("%s/cut_nll_vs_%s.png" % (outDir,n))
-
     mtG_cut[n].Draw("alp")
-    c.SaveAs("%s/cut_%s_nll_vs_mt.png" % (outDir,n))
+    for fmt in formats:
+        c.SaveAs("%s/cut_%s_nll_vs_mt.%s" % (outDir,n,fmt))
 
 # Write output file
 f = TFile.Open("%s/%s.root" %(outDir, outDir), "recreate")
-for n in nuisances:
+for n in ["MT"]+nuisances:
     paramG[n].Write()
     paramG_cut[n].Write()
     mtG[n].Write()

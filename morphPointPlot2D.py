@@ -15,10 +15,17 @@ parser.add_argument("-s", "--sig", nargs="+", default=["tt"], choices=["tt","tW"
 parser.add_argument("--syst", default="", help="systematic")
 parser.add_argument("--reco", default="rec", choices=["rec","gen"], help="reconstruction level")
 parser.add_argument("--obs", dest="obs", default="ptll", help="Kinematic observable")
+parser.add_argument("--ratio", action="store_true", default=False, help="plot ratio wrt the nominal template instead")
+parser.add_argument("-n", "--norm", action="store_true", default=False, help="normalize all templates to unity")
+parser.add_argument("--includeDebug", action="store_true", default=False, help="store templates used in 2D hist/graph in output root file")
 parser.add_argument("-o", "--outF", default="", help="Output root file")
 args = parser.parse_args()
 
 print "Using %s %s templates" % ("actual" if args.actual else "morphed", args.sig)
+
+useRatio = args.ratio
+if useRatio: print "Plotting ratio to nominal"
+normalize = args.norm
 
 if args.obs not in obsTitle.keys():
     print "Invalid observable:", obs
@@ -57,10 +64,20 @@ else:
 signal = args.sig 
 #systematics = ["nominal", "pileupUp", "pileupDown", "Q2Up", "Q2Down", "PdfUp", "PdfDown"]
 #systematics = ["nominal", "bin1Up", "bin1Down", "bin2Up", "bin2Down"]
-systematics = ["nominal"]
-recoObs = "%s_%s" % (args.reco, args.obs)
 
-print "Creating 2D plots for %s" % recoObs
+if args.syst == "nominal":
+    systematics = ["nominal"]
+else:
+    systematics = ["nominal", args.syst]
+
+systematics = ["nominal", 'BTagSFDown', 'BTagSFUp', 'CRGluonDown', 'CRGluonUp', 'CRQCDDown', 'CRQCDUp', 'CRerdONDown', 'CRerdONUp', 'DSDown', 'DSUp', 'EleIDEffDown', 'EleIDEffUp', 'EleRecoEffDown', 'EleRecoEffUp', 'EleScaleDown', 'EleScaleUp', 'EleSmearDown', 'EleSmearUp', 'JECDown', 'JECUp', 'JERDown', 'JERUp', 'LumiDown', 'LumiUp', 'MuIDEffDown', 'MuIDEffUp', 'MuIsoEffDown', 'MuIsoEffUp', 'MuScaleDown', 'MuScaleUp', 'MuTrackEffDown', 'MuTrackEffUp', 'PdfDown', 'PdfUp', 'Q2Down', 'Q2Up', 'TrigEffDown', 'TrigEffUp', 'UEDown', 'UEUp', 'amcanloDown', 'amcanloUp', 'fsrDown', 'fsrUp', 'hdampDown', 'hdampUp', 'herwigppDown', 'herwigppUp', 'isrDown', 'isrUp', 'madgraphDown', 'madgraphUp', 'pileupDown', 'pileupUp', 'topptDown', 'topptUp']
+
+ttOnlySysts = ['toppt','Pdf','UE','CRerdON','CRGluon','CRQCD','amcanlo','madgraph','herwigpp']
+tWOnlySysts = ['DS']
+
+
+recoObs = "%s_%s" % (args.reco, args.obs)
+print "Creating 2D plots for %s%s" % ("normalized " if normalize else "", recoObs)
 print "Signals: %s" % signal
 print "Systematics: %s" % systematics
 
@@ -68,10 +85,12 @@ print "Systematics: %s" % systematics
 h = {}
 g2D = {}
 morph = {}
+nominalMorph = {}   # Clone of nominal templates before scaling for ratio
 for s in signal:
     h[s] = {}
     g2D[s] = {}
     morph[s] = {}
+    nominalMorph[s] = {}
     m10 = [m/10. for m in masses[s]]
     mbinavg = []
     for i in xrange(len(m10)-1):
@@ -82,8 +101,18 @@ for s in signal:
     #print "%s mbinavg:" % s, mbinavg
     #massBins = [2*m10bins[0] - mbinavg[0]] + mbinavg + [2*m10bins[-1] - mbinavg[-1]]
     print "%s: " % s, massBins
-    
+   
     for syst in systematics:
+        if syst[-2:] == "Up":
+            systType = syst[:-2]
+        elif syst[-4:] == "Down":
+            systType = syst[:-4]
+        else:
+            # Nominal
+            systType = syst
+        if (s == "tt" and systType in tWOnlySysts) or (s == "tW" and systType in ttOnlySysts): continue
+
+        #print "Now on %s" % syst
         morph[s][syst] = {}
         for m in masses[s]:
             morph[s][syst][m] = f.Get("%s/%s%s%d%s" % (recoObs, s, "actual" if args.actual else "", m, "" if syst=="nominal" else "_" + syst))
@@ -92,7 +121,23 @@ for s in signal:
             morph[s][syst][m].GetXaxis().SetTitleOffset(1.2)
             morph[s][syst][m].GetYaxis().SetTitle("Entries")
             morph[s][syst][m].GetYaxis().SetTitleOffset(1.2)
-            
+           
+            if normalize:
+                morph[s][syst][m].Scale(1/morph[s][syst][m].Integral())
+
+            if useRatio and syst == "nominal":
+                nominalMorph[s][m] = morph[s]["nominal"][m].Clone(morph[s]["nominal"][m].GetName()+"_nomrate")
+
+        if useRatio:
+            if syst == "nominal":
+                #nom = morph[s]["nominal"][1725].Clone("nom")
+                nom = nominalMorph[s][m] 
+            for m in masses[s]:
+                if syst != "nominal":
+                    nom = nominalMorph[s][m] 
+
+                morph[s][syst][m].Divide(nom)
+                morph[s][syst][m].SetTitle(morph[s][syst][m].GetTitle() + " ratio to nominal")
 
         uniformBinning = True
         obsBins = morph[s][syst][masses[s][0]].GetXaxis().GetXbins()
@@ -157,11 +202,20 @@ for s in signal:
 outF = TFile.Open(args.outF, "recreate")
 for s in signal:
     for syst in systematics:
+        if syst[-2:] == "Up":
+            systType = syst[:-2]
+        elif syst[-4:] == "Down":
+            systType = syst[:-4]
+        else:
+            # Nominal
+            systType = syst
+        if (s == "tt" and systType in tWOnlySysts) or (s == "tW" and systType in ttOnlySysts): continue
         h[s][syst].Write()
         g2D[s][syst].Write()
-        for m in masses[s]:
-            #morph[s][syst][m].Write()
-            morph[s][syst][m].Write("%s_%s_%d" % (s,args.obs,m))
+        if args.includeDebug:
+            for m in masses[s]:
+                #morph[s][syst][m].Write()
+                morph[s][syst][m].Write("%s_%s_%d%s" % (s,args.obs,m, "" if syst == "nominal" else "_%s" % syst))
 
 outF.Close()
 

@@ -352,7 +352,7 @@ for m in masses:
     exec('massStr = "%.' + str(precision) + 'f" % (float(m)/decimalScaling)')
     hists[m].SetTitle("%s %s %s%s  %s  m_{t} = %s GeV" % ("t#bar{t}" if args.sig == "tt" else args.sig,args.reco, obsTitle[args.obs], "" if args.syst == "" else " %s" % args.syst, "actual" if args.useActual else "morphed", massStr) )
     #hists[m].GetXaxis().SetTitle("%s %s [GeV]" % (args.reco, obsTitle[args.obs]) )
-    hists[m].GetYaxis().SetTitle("Normalized Entries / %s" % ("%.0f GeV" % binW if not useVariableBinning else "Bin") )
+    hists[m].GetYaxis().SetTitle("%sEntries / %s" % ("Normalized " if normalize else "", "%.0f GeV" % binW if not useVariableBinning else "Bin") )
     hists[m].GetXaxis().SetTitleOffset(1.1)
     hists[m].GetYaxis().SetTitleOffset(1.3)
     hists[m].GetYaxis().SetRangeUser(0.0, 1.05*maxY)

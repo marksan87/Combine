@@ -30,19 +30,20 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--input', '-i', default="impacts.json", help='input json file')
 parser.add_argument('--output', '-o', default="impacts", help='name of the output file to create')
 parser.add_argument('-p', '--POI', dest="POI", default="MT", help="parameter of interest")
-parser.add_argument('--translate', '-t', help='JSON file for remapping of parameter names')
+parser.add_argument('--translate', '-t', default="/uscms_data/d3/msaunder/combine/CMSSW_10_2_13/src/UserCode/mtMorphing/translateSystNames.json", help='JSON file for remapping of parameter names')
 parser.add_argument('--units', default=None, help='Add units to the best-fit parameter value')
 parser.add_argument('--per-page', type=int, default=100, help='Number of parameters to show per page')
 parser.add_argument("--mergeBinStats", action="store_true", default=False, help="combine bin stat uncertainties into one parameter")
 #parser.add_argument('--cms-label', default='Internal', help='Label next to the CMS logo')
 parser.add_argument("--ignoreGenerators", action="store_true", default=False, help="ignore MC generator systematics")
-parser.add_argument("--unc", "--uncDisplay", dest="uncDisplay", choices=["total","syststat", "both"], default="syststat", help="display total fit unc, split by syst + stat, or both")
+parser.add_argument("--unc", "--uncDisplay", dest="uncDisplay", choices=["total","syststat", "both"], default="both", help="display total fit unc, split by syst + stat, or both")
 parser.add_argument("--splitUnc", action="store_true", default=False, help="display stat/syst breakdown")
 parser.add_argument('--cms-label', default='Work in Progress', help='Label next to the CMS logo')
 parser.add_argument('--transparent', action='store_true', help='Draw areas as hatched lines instead of solid')
 parser.add_argument('--color-groups', default=None, help='Comma separated list of GROUP=COLOR')
 args = parser.parse_args()
 
+ignoreGenerators = args.ignoreGenerators
 mergeBinStats = args.mergeBinStats
 
 canvasW = 700
@@ -92,6 +93,7 @@ POI_fit = data['POIs'][selectedPOI]['fit']
 # Fit uncertainty
 
 nbinstats = 0
+
 paramsToRemove = []
 # Sort parameters by largest absolute impact on this POI
 data['params'].sort(key=lambda x: abs(x['impact_%s' % POIs[selectedPOI]]), reverse=True)
@@ -101,7 +103,7 @@ if args.POI == "MT":
         data[u'POIs'][selectedPOI][u'fit'][i] = fit/decimalScaling
 
     for p in xrange(len(data[u'params'])):
-        if args.ignoreGenerators and data[u'params'][p]["name"] in generator_systs: 
+        if ignoreGenerators and data[u'params'][p]["name"] in generator_systs: 
             print "Skipping parameter %d: %s" % (p, data[u'params'][p]["name"])
             paramsToRemove.append(p)
         if data[u'params'][p]["name"] == u'stat' or data[u'params'][p]["name"] == u'MCbinStats':
@@ -128,7 +130,9 @@ MCbinStatUncDn = 0.
 for i,p in enumerate(sorted(paramsToRemove)):
     print "Removing %s from list" % data[u'params'][p-i]["name"]
     if data[u'params'][p-i]["name"] == u'stat':
-        statUnc = (fitUnc**2 - data[u'params'][p-i][u'impact_MT']**2)**0.5
+        statUnc = data[u'params'][p-i][u'impact_MT']
+        #systUnc = (fitUnc**2 - statUnc**2)**0.5
+        #statUnc = (fitUnc**2 - data[u'params'][p-i][u'impact_MT']**2)**0.5
         print "Found stat uncertainty: %.3f" % statUnc
     elif data[u'params'][p-i]["name"] == u'MCbinStats':
         given_MCbinStatUnc = (fitUnc**2 - data[u'params'][p-i][u'impact_MT']**2)**0.5
@@ -443,12 +447,9 @@ for page in xrange(n):
     #canv.Print('.png%s' % extra)
 
 # Output file for debugging info
-debugFile = args.input.replace(".json",".debug")
-#if not os.path.exists(debugFile):
-#    with open(debugFile, "w") as f:
-#        f.write("NumSysts\tNumMCBinStats\tfitUnc\tstatUnc\tsystUnc\n")
-with open(debugFile,"w") as f:
-        f.write("NumSysts\tNumMCBinStats\tMCUnc\tstatUnc\tsystUnc\tfitUnc\n")
-        f.write("%d\t\t\t%d\t\t\t\t%.3f\t%.3f\t%.3f\t%.3f\n" % (len(data['params']), nbinstats, mcStatUnc, statUnc, systUnc, fitUnc))
+#debugFile = args.input.replace(".json",".debug")
+#with open(debugFile,"w") as f:
+#        f.write("NumSysts\tNumMCBinStats\tMCUnc\tstatUnc\tsystUnc\tfitUnc\n")
+#        f.write("%d\t\t\t%d\t\t\t\t%.3f\t%.3f\t%.3f\t%.3f\n" % (len(data['params']), nbinstats, mcStatUnc, statUnc, systUnc, fitUnc))
     
     

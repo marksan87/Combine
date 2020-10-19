@@ -1,7 +1,0 @@
-# obs        nbins   min     max
-rec_ptll     100     20      220
-rec_ptpos    100     20      220
-rec_ptp_ptm  150     20      320 
-rec_Epos     150     20      320
-rec_Mll      200     20      420
-rec_Ep_Em    250     20      520
